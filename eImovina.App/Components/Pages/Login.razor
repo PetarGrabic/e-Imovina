@@ -1,0 +1,51 @@
+@page "/login"
+@attribute [AllowAnonymous]
+
+<PageTitle>Prijava — e-Imovina</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
+    <MudPaper Class="pa-8" Elevation="2">
+        <MudText Typo="Typo.h5" GutterBottom="true">Prijava</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">e-Imovina Županije</MudText>
+
+        @if (Forbidden == "1")
+        {
+            <AccessDeniedMessage />
+        }
+        else
+        {
+            @if (Error == "1")
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">
+                    Neispravno korisničko ime ili lozinka.
+                </MudAlert>
+            }
+
+            <form method="post" action="/account/login">
+                <MudStack Spacing="3">
+                    <MudTextField T="string" Label="Korisničko ime" Variant="Variant.Outlined"
+                                   UserAttributes="@(new Dictionary<string, object> { ["name"] = "username" })"
+                                   Required="true" />
+                    <MudTextField T="string" Label="Lozinka" Variant="Variant.Outlined" InputType="InputType.Password"
+                                   UserAttributes="@(new Dictionary<string, object> { ["name"] = "password" })"
+                                   Required="true" />
+                    <input type="hidden" name="returnUrl" value="@(ReturnUrl ?? "/")" />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">
+                        Prijava
+                    </MudButton>
+                </MudStack>
+            </form>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Forbidden { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+}

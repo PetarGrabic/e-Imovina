@@ -10,7 +10,21 @@
         <MudText Typo="Typo.h5" Class="ml-3">e-Imovina Županije</MudText>
         <MudSpacer />
         <MudIconButton Icon="@(DarkLightModeButtonIcon)" Color="Color.Inherit" OnClick="@DarkModeToggle" />
-        <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Color="Color.Inherit" Edge="Edge.End" />
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" AriaLabel="Korisnički izbornik">
+                    <MudMenuItem Disabled="true">@context.User.Identity!.Name</MudMenuItem>
+                    <MudDivider />
+                    <MudMenuItem>
+                        <form method="post" action="/account/logout">
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" FullWidth="true" StartIcon="@Icons.Material.Filled.Logout">
+                                Odjava
+                            </MudButton>
+                        </form>
+                    </MudMenuItem>
+                </MudMenu>
+            </Authorized>
+        </AuthorizeView>
     </MudAppBar>
     <MudDrawer id="nav-drawer" @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />

@@ -16,10 +16,16 @@ Solution ima tri projekta:
 
 ## Pokretanje
 
-_Dopunit će se — App i API se pokreću zajedno (npr. `dotnet run` u dva terminala)._
-
-- API: `dotnet run --project eImovina.Api` → `https://localhost:7150` (Swagger na `/swagger`).
-- App: `dotnet run --project eImovina.App` → `https://localhost:7100`.
+1. Postaviti JWT tajne (jednom, iz `eImovina.Api/` direktorija):
+   ```
+   dotnet user-secrets init
+   dotnet user-secrets set "Jwt:Issuer" "eImovina.Api"
+   dotnet user-secrets set "Jwt:Audience" "eImovina.App"
+   dotnet user-secrets set "Jwt:Key" "<nasumičan string, minimalno 32 znaka>"
+   ```
+2. API: `dotnet run --project eImovina.Api` → `https://localhost:7150` (Swagger na `/swagger`).
+   Baza se pritom automatski kreira, migrira i puni demo podacima.
+3. App: `dotnet run --project eImovina.App` → `https://localhost:7100`.
 
 ## Migracije baze
 
@@ -27,7 +33,14 @@ _Dopunit će se._
 
 ## Demo računi
 
-_Dopunit će se._
+Lozinka je ista za sve demo račune: **`Demo123!`**
+
+| Korisničko ime | Lozinka | Uloge |
+|---|---|---|
+| `admin` | `Demo123!` | Admin |
+| `inventar.manager` | `Demo123!` | InventoryManager |
+| `marko.novak` | `Demo123!` | LocationResponsible, Employee |
+| `ivan.horvat` | `Demo123!` | Employee |
 
 ## Uloge
 

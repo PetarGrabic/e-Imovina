@@ -1,3 +1,9 @@
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Početna</MudNavLink>
+    @* TODO(Section 15): remove this Admin-only stub once the real Users page lands. *@
+    <AuthorizeView Roles="@RoleNames.Admin" Context="_">
+        <Authorized>
+            <MudNavLink Href="dev/users-placeholder" Icon="@Icons.Material.Filled.People">Korisnici</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
 </MudNavMenu>
