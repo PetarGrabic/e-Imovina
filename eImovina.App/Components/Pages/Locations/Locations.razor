@@ -1,0 +1,225 @@
+@page "/locations"
+@attribute [Authorize(Policy = "LocationWork")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Lokacije — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Lokacije</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="LocationListItemDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 260px;" />
+        <MudSelect T="int?" Label="Tip lokacije" Value="_locationTypeId" ValueChanged="OnLocationTypeFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 220px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi tipovi</MudSelectItem>
+            @foreach (var type in _locationTypes)
+            {
+                <MudSelectItem T="int?" Value="@((int?)type.Id)">@type.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="bool?" Label="Status" Value="_isActive" ValueChanged="OnActiveFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="bool?" Value="@((bool?)null)">Sve</MudSelectItem>
+            <MudSelectItem T="bool?" Value="@((bool?)true)">Aktivne</MudSelectItem>
+            <MudSelectItem T="bool?" Value="@((bool?)false)">Neaktivne</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <AuthorizeView Policy="InventoryManagement" Context="_">
+            <Authorized>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+                    Nova lokacija
+                </MudButton>
+            </Authorized>
+        </AuthorizeView>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="name">Naziv</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="code">Oznaka</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="locationType">Tip</MudTableSortLabel></MudTh>
+        <MudTh>Adresa</MudTh>
+        <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="isActive">Status</MudTableSortLabel></MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Naziv">@context.Name</MudTd>
+        <MudTd DataLabel="Oznaka">@context.Code</MudTd>
+        <MudTd DataLabel="Tip">@context.LocationTypeName</MudTd>
+        <MudTd DataLabel="Adresa">@(context.Address ?? "—")</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                @(context.IsActive ? "Aktivna" : "Neaktivna")
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Akcije">
+            <AuthorizeView Policy="InventoryManagement" Context="_">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialogAsync(context.Id))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
+                    <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Ukloni {context.Name}" })" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema lokacija za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje lokacija…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private static readonly DialogOptions EditDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private MudTable<LocationListItemDto> _table = null!;
+    private List<LookupDto> _locationTypes = new();
+    private string? _searchText;
+    private int? _locationTypeId;
+    private bool? _isActive;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/locationtypes");
+        if (result.IsSuccess)
+        {
+            _locationTypes = result.Value!;
+        }
+    }
+
+    private async Task<TableData<LocationListItemDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+        if (_locationTypeId is int typeId)
+        {
+            queryParams["LocationTypeId"] = typeId.ToString();
+        }
+        if (_isActive is bool isActive)
+        {
+            queryParams["IsActive"] = isActive.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/locations", queryParams);
+        var result = await Api.GetAsync<PagedResult<LocationListItemDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<LocationListItemDto> { TotalItems = 0, Items = Array.Empty<LocationListItemDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<LocationListItemDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private Task OnLocationTypeFilterChangedAsync(int? value)
+    {
+        _locationTypeId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnActiveFilterChangedAsync(bool? value)
+    {
+        _isActive = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        _locationTypeId = null;
+        _isActive = null;
+        await _table.ReloadServerData();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<LocationEditDialog>("Nova lokacija", EditDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(int id)
+    {
+        var detail = await Api.GetAsync<LocationDetailDto>($"api/locations/{id}");
+        if (!detail.IsSuccess)
+        {
+            Snackbar.Add(detail.Error!.Message, Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters<LocationEditDialog> { { x => x.Existing, detail.Value } };
+        var dialogReference = await DialogService.ShowAsync<LocationEditDialog>("Uredi lokaciju", parameters, EditDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task RemoveAsync(LocationListItemDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Ukloniti lokaciju?",
+            $"Lokacija „{row.Name}” bit će uklonjena — trajno obrisana ako nikada nije bila povezana s opremom, zaposlenicima ili inventurama, inače deaktivirana.",
+            "Ukloni",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.DeleteAsync<LocationDeleteResultDto>($"api/locations/{row.Id}");
+        if (result.IsSuccess)
+        {
+            var message = result.Value!.HardDeleted ? "Lokacija je trajno obrisana." : "Lokacija je deaktivirana.";
+            Snackbar.Add(message, Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+}

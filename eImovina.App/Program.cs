@@ -2,6 +2,7 @@ using MudBlazor.Services;
 using eImovina.App.Auth;
 using eImovina.App.Components;
 using eImovina.App.Services;
+using eImovina.Shared.Common;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 
@@ -21,17 +22,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath = "/login";
         // AccessDeniedPath (403/Forbid, authenticated-but-wrong-role) is a genuinely separate
-        // redirect from LoginPath (401/Challenge, anonymous) - both append "?ReturnUrl=..." by
-        // default via BuildRedirectUri, so pointing them at the same literal path makes the two
-        // cases indistinguishable to the client. Reuse "/login" (no separate route) but mark the
-        // 403 case explicitly so Login.razor can render an access-denied message instead of the
-        // login form.
-        options.AccessDeniedPath = "/login";
-        options.Events.OnRedirectToAccessDenied = context =>
-        {
-            context.Response.Redirect("/login?forbidden=1");
-            return Task.CompletedTask;
-        };
+        // route from LoginPath (401/Challenge, anonymous), so ASP.NET Core's default
+        // "?ReturnUrl=..." on both redirects is no longer ambiguous between the two cases.
+        options.AccessDeniedPath = "/access-denied";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = false;
     });
@@ -40,7 +33,15 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 // whack-a-mole. Instead, "every page requires auth by default" is enforced at the component
 // level via a blanket [Authorize] in Components/_Imports.razor, which AuthorizeRouteView reads;
 // Login.razor opts out via its own [AllowAnonymous].
-builder.Services.AddAuthorization();
+// Mirrors the policy names registered on eImovina.Api's Program.cs - the cookie carries the same
+// role claims the API's JWT does, so [Authorize(Policy = "...")] / <AuthorizeView Policy="...">
+// here are the same cosmetic (real enforcement stays on the API) checks under the same names.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole(RoleNames.Admin));
+    options.AddPolicy("InventoryManagement", policy => policy.RequireRole(RoleNames.Admin, RoleNames.InventoryManager));
+    options.AddPolicy("LocationWork", policy => policy.RequireRole(RoleNames.Admin, RoleNames.InventoryManager, RoleNames.LocationResponsible));
+});
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddScoped<ITokenAccessor, TokenAccessor>();

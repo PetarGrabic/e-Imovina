@@ -36,6 +36,9 @@ public class ApiClient
     public Task<ApiResult> DeleteAsync(string requestUri, CancellationToken ct = default)
         => SendAsync(() => _http.DeleteAsync(requestUri, ct), ct);
 
+    public Task<ApiResult<T>> DeleteAsync<T>(string requestUri, CancellationToken ct = default)
+        => SendAsync<T>(() => _http.DeleteAsync(requestUri, ct), ct);
+
     private async Task<ApiResult<T>> SendAsync<T>(Func<Task<HttpResponseMessage>> send, CancellationToken ct)
     {
         HttpResponseMessage response;

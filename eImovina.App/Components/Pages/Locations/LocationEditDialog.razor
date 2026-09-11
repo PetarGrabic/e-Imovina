@@ -1,0 +1,129 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudStack Spacing="3">
+                <MudTextField T="string" Label="Naziv" @bind-Value="_model.Name" For="@(() => _model.Name)" Immediate="true" Variant="Variant.Outlined" />
+                <MudTextField T="string" Label="Oznaka" @bind-Value="_model.Code" For="@(() => _model.Code)" Immediate="true" Variant="Variant.Outlined" />
+                <MudSelect T="int" Label="Tip lokacije" @bind-Value="_model.LocationTypeId" For="@(() => _model.LocationTypeId)" Variant="Variant.Outlined">
+                    @foreach (var type in _locationTypes)
+                    {
+                        <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTextField T="string" Label="Adresa" @bind-Value="_model.Address" For="@(() => _model.Address)" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                @if (IsEdit)
+                {
+                    <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivna" Color="Color.Primary" />
+                }
+            </MudStack>
+        </MudForm>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public LocationDetailDto? Existing { get; set; }
+
+    private MudForm _form = null!;
+    private readonly LocationFormModel _model = new();
+    private List<LookupDto> _locationTypes = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    private bool IsEdit => Existing is not null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Existing is not null)
+        {
+            _model.Name = Existing.Name;
+            _model.Code = Existing.Code;
+            _model.LocationTypeId = Existing.LocationTypeId;
+            _model.Address = Existing.Address;
+            _model.IsActive = Existing.IsActive;
+        }
+
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/locationtypes");
+        if (result.IsSuccess)
+        {
+            _locationTypes = result.Value!;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        bool success;
+        string? errorMessage;
+
+        if (IsEdit)
+        {
+            var result = await Api.PutAsync<LocationUpdateDto>(
+                $"api/locations/{Existing!.Id}",
+                new LocationUpdateDto(_model.Name, _model.Code, _model.LocationTypeId, _model.Address, _model.IsActive));
+            success = result.IsSuccess;
+            errorMessage = result.Error?.Message;
+        }
+        else
+        {
+            var result = await Api.PostAsync<LocationCreateDto, LocationDetailDto>(
+                "api/locations",
+                new LocationCreateDto(_model.Name, _model.Code, _model.LocationTypeId, _model.Address));
+            success = result.IsSuccess;
+            errorMessage = result.Error?.Message;
+        }
+
+        _saving = false;
+
+        if (success)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = errorMessage;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class LocationFormModel
+    {
+        [Required(ErrorMessage = "Naziv je obavezan.")]
+        [MaxLength(200)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Oznaka je obavezna.")]
+        [MaxLength(20)]
+        public string Code { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati tip lokacije.")]
+        public int LocationTypeId { get; set; }
+
+        [MaxLength(300)]
+        public string? Address { get; set; }
+
+        public bool IsActive { get; set; } = true;
+    }
+}
