@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="eImovina.Api/eImovina.Api.csproj" />
+  <Project Path="eImovina.App/eImovina.App.csproj" />
+  <Project Path="eImovina.Shared/eImovina.Shared.csproj" />
+</Solution>

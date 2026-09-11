@@ -1,0 +1,55 @@
+@page "/"
+@inject IHttpClientFactory HttpClientFactory
+
+<PageTitle>Početna — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">e-Imovina Županije</MudText>
+<MudText Class="mb-6" Typo="Typo.body1">
+    Sustav za evidenciju i upravljanje županijskom opremom.
+</MudText>
+
+<MudPaper Class="pa-4" MaxWidth="480px" Elevation="1">
+    <MudText Typo="Typo.subtitle1" GutterBottom="true">Status povezivanja s API-jem</MudText>
+
+    @if (_state == PingState.Loading)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+            <MudText Typo="Typo.body2">Povezivanje s API-jem…</MudText>
+        </MudStack>
+    }
+    else if (_state == PingState.Ok)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true">API odgovara: @_status</MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">Greška pri povezivanju s API-jem: @_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private enum PingState { Loading, Ok, Error }
+
+    private PingState _state = PingState.Loading;
+    private string? _status;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Api");
+            var response = await client.GetFromJsonAsync<PingResponse>("api/ping");
+            _status = response?.Status ?? "(prazan odgovor)";
+            _state = PingState.Ok;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _state = PingState.Error;
+        }
+    }
+
+    private sealed record PingResponse(string Status);
+}
