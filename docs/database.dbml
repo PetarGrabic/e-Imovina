@@ -1,0 +1,354 @@
+Project eImovina {
+  database_type: 'SQLite'
+  note: '''
+    e-Imovina Zupanije - county property/equipment management.
+    Section 2 design (pre-migration). PascalCase names match the planned
+    EF Core entity/DbSet names 1:1 to minimize friction in Section 3.
+    Filtered/partial unique indexes are documented via index `note:` fields
+    since DBML has no native filter-predicate syntax; SQLite and EF Core's
+    Sqlite provider support them natively (HasFilter(...)).
+  '''
+}
+
+//////////////////////////////////////////////////////////////////////
+// LOOKUPS (7 required + roles) - all lookup FKs are Restrict on delete;
+// IsActive lets an admin retire a value from pickers without breaking
+// historical rows that reference it.
+//////////////////////////////////////////////////////////////////////
+
+Table LocationTypes {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Ured, Skola, Skladiste, Terenska lokacija.'
+}
+
+Table EquipmentCategories {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Racunalo, Mrezna oprema, Namjestaj, Alat, Ostalo.'
+}
+
+Table EquipmentStatuses {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Na skladistu, Zaduzeno, Na servisu, Nedostaje, Otpisano.'
+}
+
+Table AssignmentStatuses {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Aktivno, Vraceno, Premjesteno, Stornirano.'
+}
+
+Table InventoryStatuses {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Nacrt, Otvorena, U tijeku, Zavrsena, Zakljucana.'
+}
+
+Table RequestStatuses {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Zaprimljeno, U obradi, Odobreno, Odbijeno, Realizirano, Zatvoreno.'
+}
+
+Table WriteOffRequestStatuses {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  IsActive boolean [not null, default: true]
+  Note: 'Seed: Zaprimljeno, U obradi, Odobreno, Odbijeno, Provedeno.'
+}
+
+Table AppRoles {
+  Id integer [pk, increment]
+  Name varchar(50) [not null, unique]
+  Note: 'Seed: Admin, InventoryManager, LocationResponsible, Employee.'
+}
+
+//////////////////////////////////////////////////////////////////////
+// CORE ENTITIES
+//////////////////////////////////////////////////////////////////////
+
+Table Locations {
+  Id integer [pk, increment]
+  Name varchar(200) [not null]
+  Code varchar(20) [not null, unique]
+  LocationTypeId integer [not null]
+  Address varchar(300)
+  IsActive boolean [not null, default: true]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    LocationTypeId
+  }
+
+  Note: 'A building/site. Soft-deactivated (IsActive), never deleted - Equipment/Employees/Inventories reference it, possibly historically.'
+}
+
+Table Employees {
+  Id integer [pk, increment]
+  FirstName varchar(100) [not null]
+  LastName varchar(100) [not null]
+  Email varchar(200) [not null, unique]
+  JobTitle varchar(150)
+  LocationId integer [not null]
+  IsActive boolean [not null, default: true]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    LocationId
+  }
+
+  Note: 'Business profile of a person. Deactivated, not deleted - assignments/requests/inventories reference employees historically.'
+}
+
+Table Equipment {
+  Id integer [pk, increment]
+  InventoryNumber varchar(50) [not null]
+  SerialNumber varchar(100)
+  Name varchar(200) [not null]
+  EquipmentCategoryId integer [not null]
+  EquipmentStatusId integer [not null]
+  CurrentLocationId integer [not null]
+  PurchaseValue decimal(18,2)
+  Currency char(3)
+  PurchaseDate date
+  Notes varchar(1000)
+  IsArchived boolean [not null, default: false]
+  ArchivedAtUtc datetime
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    EquipmentCategoryId
+    EquipmentStatusId
+    CurrentLocationId
+    (InventoryNumber) [unique, name: 'UX_Equipment_InventoryNumber']
+    (SerialNumber) [unique, name: 'UX_Equipment_SerialNumber', note: 'Plain unique index - NOT filtered. SQLite/ANSI SQL already treat every NULL as distinct under UNIQUE, so any number of NULLs is allowed and only non-null values are compared - exactly the "unique if provided" rule, no filter predicate needed.']
+  }
+
+  Note: 'CurrentLocationId is NOT NULL - every physical item is always somewhere, even a central warehouse location. IsArchived/ArchivedAtUtc let the mandatory CRUD DELETE (Section 7) soft-archive equipment with history instead of hard-deleting it.'
+}
+
+//////////////////////////////////////////////////////////////////////
+// BUSINESS PROCESSES
+//////////////////////////////////////////////////////////////////////
+
+Table EquipmentAssignments {
+  Id integer [pk, increment]
+  EquipmentId integer [not null]
+  EmployeeId integer [not null]
+  AssignmentStatusId integer [not null]
+  AssignedAtUtc datetime [not null]
+  ReturnedAtUtc datetime
+  AssignedByUserId integer [not null]
+  ClosedByUserId integer
+  Note varchar(1000)
+
+  indexes {
+    EquipmentId
+    EmployeeId
+    AssignmentStatusId
+    (EquipmentId) [unique, name: 'UX_Assignments_OneActivePerEquipment', note: 'Filtered/partial unique index WHERE AssignmentStatusId = <Id of Aktivno>. This is the real DB-level guard against two active assignments for the same equipment. EF Core: HasIndex(x => x.EquipmentId).IsUnique().HasFilter("AssignmentStatusId = <ActivoId>"). SQLite supports partial indexes natively.']
+  }
+
+  Note: 'Full assignment history - append-only, never truncated. AssignedByUserId = who opened it. ClosedByUserId (nullable) = who performed the return/transfer/cancel - a narrow, named field on this one table, not a generic audit log.'
+}
+
+Table Inventories {
+  Id integer [pk, increment]
+  LocationId integer [not null]
+  ResponsibleEmployeeId integer [not null]
+  InventoryStatusId integer [not null]
+  OpenedAtUtc datetime
+  CompletedAtUtc datetime
+  LockedAtUtc datetime
+  CreatedByUserId integer [not null]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+  Note varchar(1000)
+
+  indexes {
+    LocationId
+    ResponsibleEmployeeId
+    InventoryStatusId
+  }
+
+  Note: 'Belongs to exactly one Location and one responsible Employee - the schema-level anchor for the "own location only" ownership check enforced at the API in Section 11.'
+}
+
+Table InventoryItems {
+  Id integer [pk, increment]
+  InventoryId integer [not null]
+  EquipmentId integer [not null]
+  ExpectedLocationId integer [not null]
+  FoundLocationId integer
+  IsFound boolean
+  IsDamaged boolean
+  ProcessedAtUtc datetime
+  ProcessedByUserId integer
+  Note varchar(1000)
+  SnapshotInventoryNumber varchar(50) [not null]
+  SnapshotEquipmentName varchar(200) [not null]
+  SnapshotCategoryName varchar(100) [not null]
+  SnapshotStatusName varchar(100) [not null]
+
+  indexes {
+    InventoryId
+    EquipmentId
+    (InventoryId, EquipmentId) [unique, name: 'UX_InventoryItems_OnePerEquipment']
+  }
+
+  Note: 'Snapshot fields are copied by TEXT VALUE at open-time (not just FK ids), so a later rename/recategorize/status-change on Equipment never rewrites what a locked inventory historically reported. EquipmentId is kept for live joins but is not authoritative for historical display. ExpectedLocationId/FoundLocationId stay as live FKs to Locations - locations are stable and never hard-deleted, so no text freeze is needed there.'
+}
+
+Enum EquipmentFileKind {
+  Image
+  Invoice
+  Warranty
+  ServiceDoc
+}
+
+Table EquipmentRequests {
+  Id integer [pk, increment]
+  RequesterEmployeeId integer [not null]
+  EquipmentCategoryId integer [not null]
+  RelatedEquipmentId integer
+  RequestStatusId integer [not null]
+  Description varchar(1000) [not null]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+  DecisionByUserId integer
+  DecisionAtUtc datetime
+  DecisionNote varchar(1000)
+
+  indexes {
+    RequesterEmployeeId
+    EquipmentCategoryId
+    RequestStatusId
+  }
+
+  Note: 'RelatedEquipmentId (nullable) optionally points at the specific existing item being replaced ("pokvario se mis") - a small, named business field, not a generic timeline.'
+}
+
+Table WriteOffRequests {
+  Id integer [pk, increment]
+  EquipmentId integer [not null]
+  SubmittedByUserId integer [not null]
+  WriteOffRequestStatusId integer [not null]
+  Reason varchar(1000) [not null]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+  DecisionByUserId integer
+  DecisionAtUtc datetime
+  DecisionNote varchar(1000)
+  ExecutedAtUtc datetime
+  ExecutedByUserId integer
+
+  indexes {
+    EquipmentId
+    WriteOffRequestStatusId
+    (EquipmentId) [unique, name: 'UX_WriteOff_OneOpenPerEquipment', note: 'Filtered/partial unique index WHERE WriteOffRequestStatusId NOT IN (Odbijeno, Provedeno). Enforces the Section 13 rule "block a second write-off on the same equipment" as a real DB constraint rather than app logic alone.']
+  }
+}
+
+Table EquipmentFiles {
+  Id integer [pk, increment]
+  EquipmentId integer [not null]
+  FileKind EquipmentFileKind [not null]
+  OriginalFileName varchar(260) [not null]
+  StoredFileName varchar(260) [not null, unique]
+  RelativePath varchar(500) [not null]
+  ContentType varchar(100) [not null]
+  SizeBytes bigint [not null]
+  UploadedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+  UploadedByUserId integer [not null]
+  IsCoverImage boolean [not null, default: false]
+
+  indexes {
+    EquipmentId
+    (EquipmentId) [unique, name: 'UX_EquipmentFiles_OneCoverPerEquipment', note: 'Filtered/partial unique index WHERE IsCoverImage = 1 - at most one cover image per equipment. EF Core: HasFilter("IsCoverImage = 1").']
+  }
+}
+
+//////////////////////////////////////////////////////////////////////
+// IDENTITY
+//////////////////////////////////////////////////////////////////////
+
+Table AppUsers {
+  Id integer [pk, increment]
+  UserName varchar(100) [not null, unique]
+  Email varchar(200) [not null, unique]
+  PasswordHash varchar(500) [not null]
+  IsActive boolean [not null, default: true]
+  EmployeeId integer [unique]
+  CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
+  LastLoginAtUtc datetime
+
+  indexes {
+    EmployeeId
+  }
+
+  Note: 'EmployeeId is nullable (Admin/InventoryManager accounts need no employee profile) and UNIQUE (at most one login account per employee), so a JWT UserId maps to exactly one EmployeeId for /mine ownership checks.'
+}
+
+Table AppUserRoles {
+  AppUserId integer [not null]
+  AppRoleId integer [not null]
+
+  indexes {
+    (AppUserId, AppRoleId) [pk]
+  }
+
+  Note: 'Composite-PK junction - one account, many roles.'
+}
+
+//////////////////////////////////////////////////////////////////////
+// RELATIONSHIPS
+//////////////////////////////////////////////////////////////////////
+
+Ref: Locations.LocationTypeId > LocationTypes.Id [delete: restrict]
+
+Ref: Employees.LocationId > Locations.Id [delete: restrict]
+
+Ref: Equipment.EquipmentCategoryId > EquipmentCategories.Id [delete: restrict]
+Ref: Equipment.EquipmentStatusId > EquipmentStatuses.Id [delete: restrict]
+Ref: Equipment.CurrentLocationId > Locations.Id [delete: restrict]
+
+Ref: EquipmentAssignments.EquipmentId > Equipment.Id [delete: restrict]
+Ref: EquipmentAssignments.EmployeeId > Employees.Id [delete: restrict]
+Ref: EquipmentAssignments.AssignmentStatusId > AssignmentStatuses.Id [delete: restrict]
+Ref: EquipmentAssignments.AssignedByUserId > AppUsers.Id [delete: restrict]
+Ref: EquipmentAssignments.ClosedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: Inventories.LocationId > Locations.Id [delete: restrict]
+Ref: Inventories.ResponsibleEmployeeId > Employees.Id [delete: restrict]
+Ref: Inventories.InventoryStatusId > InventoryStatuses.Id [delete: restrict]
+Ref: Inventories.CreatedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: InventoryItems.InventoryId > Inventories.Id [delete: cascade]
+Ref: InventoryItems.EquipmentId > Equipment.Id [delete: restrict]
+Ref: InventoryItems.ExpectedLocationId > Locations.Id [delete: restrict]
+Ref: InventoryItems.FoundLocationId > Locations.Id [delete: restrict]
+Ref: InventoryItems.ProcessedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: EquipmentRequests.RequesterEmployeeId > Employees.Id [delete: restrict]
+Ref: EquipmentRequests.EquipmentCategoryId > EquipmentCategories.Id [delete: restrict]
+Ref: EquipmentRequests.RelatedEquipmentId > Equipment.Id [delete: restrict]
+Ref: EquipmentRequests.RequestStatusId > RequestStatuses.Id [delete: restrict]
+Ref: EquipmentRequests.DecisionByUserId > AppUsers.Id [delete: restrict]
+
+Ref: WriteOffRequests.EquipmentId > Equipment.Id [delete: restrict]
+Ref: WriteOffRequests.SubmittedByUserId > AppUsers.Id [delete: restrict]
+Ref: WriteOffRequests.WriteOffRequestStatusId > WriteOffRequestStatuses.Id [delete: restrict]
+Ref: WriteOffRequests.DecisionByUserId > AppUsers.Id [delete: restrict]
+Ref: WriteOffRequests.ExecutedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: EquipmentFiles.EquipmentId > Equipment.Id [delete: restrict]
+Ref: EquipmentFiles.UploadedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: AppUsers.EmployeeId > Employees.Id [delete: restrict]
+Ref: AppUserRoles.AppUserId > AppUsers.Id [delete: cascade]
+Ref: AppUserRoles.AppRoleId > AppRoles.Id [delete: restrict]
