@@ -1,0 +1,78 @@
+@* TODO(Section 16): remove this scratch/demo page before submission. *@
+@page "/dev/section4-scratch"
+@inject ApiClient Api
+@inject IDialogService DialogService
+
+<PageTitle>Section 4 – komponente stanja</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Prikaz zajedničkih komponenti stanja</MudText>
+
+<MudStack Spacing="4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.subtitle2" GutterBottom="true">Učitavanje</MudText>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje podataka…" />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">Učitavanje završeno.</MudAlert>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.subtitle2" GutterBottom="true">Prazno stanje</MudText>
+        <EmptyState Message="Nema opreme za prikaz." />
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.subtitle2" GutterBottom="true">Greška (namjerno neispravan zahtjev prema API-ju)</MudText>
+        @if (_apiError is not null)
+        {
+            <ErrorAlert Message="@_apiError" OnRetry="TriggerBadRequestAsync" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body2">(poziv još nije izvršen)</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.subtitle2" GutterBottom="true">Potvrdni dijalog</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="OpenConfirmAsync">Obriši stavku</MudButton>
+        <MudText Typo="Typo.body2" Class="mt-2">@_confirmResult</MudText>
+    </MudPaper>
+</MudStack>
+
+@code {
+    private bool _loading = true;
+    private string? _apiError;
+    private string _confirmResult = "(nema odabira)";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(600);
+        _loading = false;
+        await TriggerBadRequestAsync();
+    }
+
+    private async Task TriggerBadRequestAsync()
+    {
+        _apiError = null;
+        // Deliberately invalid body (missing required "Text") to exercise ApiClient's
+        // ProblemDetails -> ApiError mapping against the API's 400 response.
+        var result = await Api.PostAsync<object, object>("api/diagnostics/echo", new { });
+        _apiError = result.IsSuccess ? null : result.Error!.Message;
+        StateHasChanged();
+    }
+
+    private async Task OpenConfirmAsync()
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Obriši stavku?",
+            "Ova radnja se ne može poništiti.",
+            "Obriši",
+            Color.Error);
+        _confirmResult = confirmed ? "Potvrđeno." : "Odustano.";
+    }
+}

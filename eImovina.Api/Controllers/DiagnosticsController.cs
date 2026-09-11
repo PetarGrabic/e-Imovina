@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using eImovina.Api.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -49,4 +50,12 @@ public class DiagnosticsController : ControllerBase
             AppUserRoles = await _db.AppUserRoles.CountAsync(ct),
         });
     }
+
+    // Throwaway endpoint exercising [ApiController]'s automatic ValidationProblemDetails 400 -
+    // used by tests/section4.sh and the /dev/section4-scratch page to demonstrate ApiClient's
+    // ProblemDetails -> ApiError mapping. No real business meaning.
+    public sealed record EchoRequest([Required, MinLength(1)] string? Text);
+
+    [HttpPost("echo")]
+    public IActionResult PostEcho([FromBody] EchoRequest request) => Ok(request);
 }

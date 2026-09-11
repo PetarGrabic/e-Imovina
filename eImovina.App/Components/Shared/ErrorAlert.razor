@@ -1,0 +1,15 @@
+<MudAlert Severity="Severity.Error" Dense="true" Class="@Class">
+    @Message
+    @if (OnRetry.HasDelegate)
+    {
+        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Inherit" OnClick="OnRetry" Class="ml-2">
+            Pokušaj ponovno
+        </MudButton>
+    }
+</MudAlert>
+
+@code {
+    [Parameter, EditorRequired] public string Message { get; set; } = null!;
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

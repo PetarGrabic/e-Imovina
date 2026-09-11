@@ -1,5 +1,5 @@
 @page "/"
-@inject IHttpClientFactory HttpClientFactory
+@inject ApiClient Api
 
 <PageTitle>Početna — e-Imovina</PageTitle>
 
@@ -13,10 +13,7 @@
 
     @if (_state == PingState.Loading)
     {
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-            <MudText Typo="Typo.body2">Povezivanje s API-jem…</MudText>
-        </MudStack>
+        <LoadingPanel Message="Povezivanje s API-jem…" />
     }
     else if (_state == PingState.Ok)
     {
@@ -24,7 +21,7 @@
     }
     else
     {
-        <MudAlert Severity="Severity.Error" Dense="true">Greška pri povezivanju s API-jem: @_error</MudAlert>
+        <ErrorAlert Message="@($"Greška pri povezivanju s API-jem: {_error}")" OnRetry="LoadAsync" />
     }
 </MudPaper>
 
@@ -35,18 +32,20 @@
     private string? _status;
     private string? _error;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
     {
-        try
+        _state = PingState.Loading;
+        var result = await Api.GetAsync<PingResponse>("api/ping");
+        if (result.IsSuccess)
         {
-            var client = HttpClientFactory.CreateClient("Api");
-            var response = await client.GetFromJsonAsync<PingResponse>("api/ping");
-            _status = response?.Status ?? "(prazan odgovor)";
+            _status = result.Value?.Status ?? "(prazan odgovor)";
             _state = PingState.Ok;
         }
-        catch (Exception ex)
+        else
         {
-            _error = ex.Message;
+            _error = result.Error!.Message;
             _state = PingState.Error;
         }
     }

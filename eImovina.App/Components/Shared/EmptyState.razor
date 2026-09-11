@@ -1,0 +1,10 @@
+<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="2" Class="@($"pa-8 {Class}")">
+    <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Default" />
+    <MudText Typo="Typo.body1" Color="Color.Secondary">@Message</MudText>
+</MudStack>
+
+@code {
+    [Parameter] public string Message { get; set; } = "Nema podataka za prikaz.";
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Inbox;
+    [Parameter] public string? Class { get; set; }
+}
