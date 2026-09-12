@@ -1,0 +1,91 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Assignments
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(CurrentEmployeeName))
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">Trenutno zadužio: @CurrentEmployeeName</MudText>
+        }
+        <MudForm @ref="_form" Model="@_model">
+            <MudStack Spacing="3">
+                <MudSelect T="int" Label="Novi zaposlenik" @bind-Value="_model.NewEmployeeId" For="@(() => _model.NewEmployeeId)" Variant="Variant.Outlined">
+                    @foreach (var employee in _employees)
+                    {
+                        <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+            </MudStack>
+        </MudForm>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Premjesti</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public int EquipmentId { get; set; }
+    [Parameter] public string? CurrentEmployeeName { get; set; }
+
+    private MudForm _form = null!;
+    private readonly TransferFormModel _model = new();
+    private List<LookupDto> _employees = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/employees");
+        if (result.IsSuccess)
+        {
+            _employees = result.Value!;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<TransferEquipmentDto>(
+            "api/assignments/transfer",
+            new TransferEquipmentDto(EquipmentId, _model.NewEmployeeId, _model.Note));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class TransferFormModel
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati novog zaposlenika.")]
+        public int NewEmployeeId { get; set; }
+
+        [MaxLength(1000)]
+        public string? Note { get; set; }
+    }
+}

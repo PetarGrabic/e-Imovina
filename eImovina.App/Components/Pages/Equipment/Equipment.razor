@@ -16,7 +16,7 @@
     <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
 }
 
-<MudTable T="EquipmentListItemDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+<MudTable T="EquipmentListItemDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true" RowsPerPage="25">
     <ToolBarContent>
         <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
                       @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"

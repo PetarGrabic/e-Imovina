@@ -1,5 +1,7 @@
 @page "/equipment/{Id:int}"
 @attribute [Authorize(Policy = "InventoryManagement")]
+@using eImovina.App.Components.Pages.Assignments
+@using eImovina.Shared.Assignments
 @using eImovina.Shared.Equipment
 @inject ApiClient Api
 @inject IDialogService DialogService
@@ -22,6 +24,16 @@ else if (_equipment is not null)
         <MudText Typo="Typo.h5">@_equipment.Name</MudText>
         <MudStack Row="true" Spacing="2">
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Href="@($"/equipment/{Id}/edit")">Uredi</MudButton>
+            @if (_equipment.CurrentAssigneeName is null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="OpenAssignDialogAsync">Zaduži opremu</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AssignmentReturn" OnClick="ReturnAsync">Vrati opremu</MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.SwapHoriz" OnClick="OpenTransferDialogAsync">Premjesti opremu</MudButton>
+            }
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.LocationOn" OnClick="OpenChangeLocationDialogAsync">Promijeni lokaciju</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Archive" OnClick="ArchiveAsync">Arhiviraj</MudButton>
         </MudStack>
     </MudStack>
@@ -130,13 +142,34 @@ else if (_equipment is not null)
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.subtitle1" GutterBottom="true">Povijest zaduženja</MudText>
-                @if (_equipment.AssignmentHistoryCount > 0)
+                @if (_historyLoading)
                 {
-                    <MudText>Ukupno zaduženja: @_equipment.AssignmentHistoryCount</MudText>
+                    <LoadingPanel Message="Učitavanje povijesti…" />
+                }
+                else if (_historyError is not null)
+                {
+                    <ErrorAlert Message="@_historyError" OnRetry="LoadHistoryAsync" />
+                }
+                else if (_history.Count == 0)
+                {
+                    <EmptyState Message="Još nema zaduženja." />
                 }
                 else
                 {
-                    <EmptyState Message="Još nema zaduženja." />
+                    foreach (var entry in _history)
+                    {
+                        <MudStack Spacing="0" Class="py-1">
+                            <MudText Typo="Typo.body2">
+                                <b>@entry.EmployeeName</b> — @entry.StatusName
+                            </MudText>
+                            <MudText Typo="Typo.caption">
+                                @entry.AssignedAtUtc.ToString("dd.MM.yyyy.")
+                                @(entry.ReturnedAtUtc is DateTime returned ? $"– {returned:dd.MM.yyyy.}" : "")
+                                · zadužio: @entry.AssignedByName
+                                @(entry.ClosedByName is not null ? $"· zatvorio: {entry.ClosedByName}" : "")
+                            </MudText>
+                        </MudStack>
+                    }
                 }
             </MudPaper>
         </MudItem>
@@ -172,9 +205,13 @@ else if (_equipment is not null)
     private bool _uploading;
     private FileKind _uploadKind = FileKind.Image;
 
+    private List<AssignmentDto> _history = new();
+    private bool _historyLoading = true;
+    private string? _historyError;
+
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadAsync(), LoadFilesAsync());
+        await Task.WhenAll(LoadAsync(), LoadFilesAsync(), LoadHistoryAsync());
     }
 
     private async Task LoadAsync()
@@ -214,6 +251,103 @@ else if (_equipment is not null)
             _filesError = result.Error!.Message;
         }
         StateHasChanged();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _historyLoading = true;
+        _historyError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<AssignmentDto>>($"api/assignments/history?equipmentId={Id}");
+        _historyLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _history = result.Value!;
+        }
+        else
+        {
+            _historyError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
+    private static readonly DialogOptions AssignmentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenAssignDialogAsync()
+    {
+        var parameters = new DialogParameters<AssignDialog> { { x => x.EquipmentId, Id } };
+        var dialogReference = await DialogService.ShowAsync<AssignDialog>("Zaduži opremu", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Oprema je zadužena.", Severity.Success);
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+        }
+    }
+
+    private async Task OpenTransferDialogAsync()
+    {
+        var parameters = new DialogParameters<TransferDialog>
+        {
+            { x => x.EquipmentId, Id },
+            { x => x.CurrentEmployeeName, _equipment!.CurrentAssigneeName },
+        };
+        var dialogReference = await DialogService.ShowAsync<TransferDialog>("Premjesti opremu", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Oprema je premještena.", Severity.Success);
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+        }
+    }
+
+    private async Task OpenChangeLocationDialogAsync()
+    {
+        var parameters = new DialogParameters<ChangeLocationDialog>
+        {
+            { x => x.EquipmentId, Id },
+            { x => x.CurrentLocationId, _equipment!.CurrentLocationId },
+        };
+        var dialogReference = await DialogService.ShowAsync<ChangeLocationDialog>("Promijeni lokaciju", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Lokacija je promijenjena.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task ReturnAsync()
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Vratiti opremu?",
+            $"Zaduženje opreme „{_equipment!.Name}” ({_equipment.InventoryNumber}) bit će zatvoreno.",
+            "Vrati",
+            Color.Primary);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var assignmentId = _history.FirstOrDefault(a => a.AssignmentStatusId == 1)?.Id;
+        if (assignmentId is null)
+        {
+            Snackbar.Add("Nije pronađeno aktivno zaduženje.", Severity.Error);
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/assignments/{assignmentId}/return");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je vraćena.", Severity.Success);
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
     }
 
     private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)

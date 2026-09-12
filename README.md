@@ -40,7 +40,9 @@ Lozinka je ista za sve demo račune: **`Demo123!`**
 | `admin` | `Demo123!` | Admin |
 | `inventar.manager` | `Demo123!` | InventoryManager |
 | `marko.novak` | `Demo123!` | LocationResponsible, Employee |
+| `ana.kovacic` | `Demo123!` | LocationResponsible, Employee |
 | `ivan.horvat` | `Demo123!` | Employee |
+| `petra.babic` | `Demo123!` | Employee |
 
 ## Uloge
 

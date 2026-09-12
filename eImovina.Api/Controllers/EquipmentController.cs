@@ -221,6 +221,24 @@ public class EquipmentController : ControllerBase
             return Problem(detail: "Odabrana lokacija ne postoji.", statusCode: StatusCodes.Status400BadRequest);
         }
 
+        // EquipmentStatusId == 2 (Zaduženo) must always correspond to exactly one active
+        // assignment row - enforced symmetrically here so the general edit form can't desync the
+        // two. The real assign/return/transfer workflow (AssignmentsController) is the only way to
+        // create or close that correspondence.
+        var hasActiveAssignment = await HasActiveAssignmentAsync(id, ct);
+        if (hasActiveAssignment && request.EquipmentStatusId != 2)
+        {
+            return Problem(
+                detail: "Oprema je trenutačno zadužena — status se ne može mijenjati dok se prvo ne izvrši povrat ili premještaj.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+        if (!hasActiveAssignment && request.EquipmentStatusId == 2)
+        {
+            return Problem(
+                detail: "Status 'Zaduženo' se ne može postaviti ručno — potrebno je zadužiti opremu kroz akciju zaduživanja.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
         equipment.InventoryNumber = request.InventoryNumber;
         equipment.SerialNumber = request.SerialNumber;
         equipment.Name = request.Name;
@@ -232,6 +250,33 @@ public class EquipmentController : ControllerBase
         equipment.PurchaseDate = request.PurchaseDate;
         equipment.Notes = request.Notes;
 
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // Task-required dedicated action alongside the general PUT (which already lets a manager
+    // change CurrentLocationId too, from Section 8) - both are kept; this one never touches
+    // EquipmentAssignments at all, which is what "without necessarily ending the assignment" means
+    // here: there's structurally nothing here that could accidentally close one. Allowed
+    // unconditionally, including while the equipment is actively assigned (Zaduženo) - confirmed
+    // with the user during Section 10 planning, and directly supported by the guideline's own
+    // wording that a location change doesn't necessarily end the assignment.
+    [HttpPost("{id:int}/change-location")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<IActionResult> ChangeLocation(int id, [FromBody] ChangeLocationDto request, CancellationToken ct)
+    {
+        var equipment = await _db.Equipment.FindAsync([id], ct);
+        if (equipment is null)
+        {
+            return NotFound();
+        }
+
+        if (!await _db.Locations.AnyAsync(l => l.Id == request.NewLocationId, ct))
+        {
+            return Problem(detail: "Odabrana lokacija ne postoji.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        equipment.CurrentLocationId = request.NewLocationId;
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -267,10 +312,13 @@ public class EquipmentController : ControllerBase
     private async Task<bool> IsEquipmentReferencedAsync(int id, CancellationToken ct)
     {
         var pendingWriteOffStatusIds = new[] { 1, 2, 3 }; // Zaprimljeno, U obradi, Odobreno (not Odbijeno/Provedeno)
-        return await _db.EquipmentAssignments.AnyAsync(a => a.EquipmentId == id && a.AssignmentStatusId == 1, ct)
+        return await HasActiveAssignmentAsync(id, ct)
             || await _db.InventoryItems.AnyAsync(ii => ii.EquipmentId == id, ct)
             || await _db.WriteOffRequests.AnyAsync(w => w.EquipmentId == id && pendingWriteOffStatusIds.Contains(w.WriteOffRequestStatusId), ct);
     }
+
+    private Task<bool> HasActiveAssignmentAsync(int id, CancellationToken ct) =>
+        _db.EquipmentAssignments.AnyAsync(a => a.EquipmentId == id && a.AssignmentStatusId == 1, ct);
 
     // Read access is intentionally broader than the rest of this controller (plain [Authorize]
     // instead of the InventoryManagement policy used everywhere else here): an employee who isn't

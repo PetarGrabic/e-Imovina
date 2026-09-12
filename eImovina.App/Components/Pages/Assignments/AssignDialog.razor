@@ -1,0 +1,120 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Assignments
+@using eImovina.Shared.Equipment
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudStack Spacing="3">
+                @if (EquipmentId is null)
+                {
+                    <MudSelect T="int" Label="Oprema" @bind-Value="_model.EquipmentId" For="@(() => _model.EquipmentId)" Variant="Variant.Outlined">
+                        @foreach (var item in _equipmentOptions)
+                        {
+                            <MudSelectItem T="int" Value="@item.Id">@($"{item.InventoryNumber} — {item.Name}")</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                <MudSelect T="int" Label="Zaposlenik" @bind-Value="_model.EmployeeId" For="@(() => _model.EmployeeId)" Variant="Variant.Outlined">
+                    @foreach (var employee in _employees)
+                    {
+                        <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+            </MudStack>
+        </MudForm>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Zaduži</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public int? EquipmentId { get; set; }
+
+    private MudForm _form = null!;
+    private readonly AssignFormModel _model = new();
+    private List<LookupDto> _employees = new();
+    private List<EquipmentListItemDto> _equipmentOptions = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (EquipmentId is int id)
+        {
+            _model.EquipmentId = id;
+        }
+
+        var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees");
+
+        if (EquipmentId is null)
+        {
+            var equipmentTask = Api.GetAsync<PagedResult<EquipmentListItemDto>>("api/equipment?PageSize=100&StatusId=1");
+            await Task.WhenAll(employeesTask, equipmentTask);
+            if (equipmentTask.Result.IsSuccess)
+            {
+                _equipmentOptions = equipmentTask.Result.Value!.Items.ToList();
+            }
+        }
+        else
+        {
+            await employeesTask;
+        }
+
+        if (employeesTask.Result.IsSuccess)
+        {
+            _employees = employeesTask.Result.Value!;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<AssignEquipmentDto, AssignmentDto>(
+            "api/assignments",
+            new AssignEquipmentDto(_model.EquipmentId, _model.EmployeeId, _model.Note));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class AssignFormModel
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati opremu.")]
+        public int EquipmentId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati zaposlenika.")]
+        public int EmployeeId { get; set; }
+
+        [MaxLength(1000)]
+        public string? Note { get; set; }
+    }
+}

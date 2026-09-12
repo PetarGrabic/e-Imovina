@@ -1,0 +1,87 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Equipment
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="@_model">
+            <MudSelect T="int" Label="Nova lokacija" @bind-Value="_model.NewLocationId" For="@(() => _model.NewLocationId)" Variant="Variant.Outlined">
+                @foreach (var location in _locations)
+                {
+                    <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Promijeni</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public int EquipmentId { get; set; }
+    [Parameter] public int? CurrentLocationId { get; set; }
+
+    private MudForm _form = null!;
+    private readonly ChangeLocationFormModel _model = new();
+    private List<LocationListItemDto> _locations = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentLocationId is int id)
+        {
+            _model.NewLocationId = id;
+        }
+
+        var result = await Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+        if (result.IsSuccess)
+        {
+            _locations = result.Value!.Items.ToList();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<ChangeLocationDto>(
+            $"api/equipment/{EquipmentId}/change-location",
+            new ChangeLocationDto(_model.NewLocationId));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class ChangeLocationFormModel
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati lokaciju.")]
+        public int NewLocationId { get; set; }
+    }
+}

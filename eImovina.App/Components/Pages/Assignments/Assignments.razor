@@ -1,0 +1,252 @@
+@page "/assignments"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.Assignments
+@using eImovina.Shared.Equipment
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Zaduženja — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Zaduženja</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="AssignmentDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudSelect T="int?" Label="Oprema" Value="_equipmentId" ValueChanged="OnEquipmentFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 220px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Sva oprema</MudSelectItem>
+            @foreach (var item in _equipmentOptions)
+            {
+                <MudSelectItem T="int?" Value="@((int?)item.Id)">@($"{item.InventoryNumber} — {item.Name}")</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Zaposlenik" Value="_employeeId" ValueChanged="OnEmployeeFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 200px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi zaposlenici</MudSelectItem>
+            @foreach (var employee in _employees)
+            {
+                <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Status" Value="_statusId" ValueChanged="OnStatusFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi statusi</MudSelectItem>
+            @foreach (var status in _statuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAssignDialogAsync">
+            Nova dodjela
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="equipment">Oprema</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="employee">Zaposlenik</MudTableSortLabel></MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="assignedat">Datum zaduženja</MudTableSortLabel></MudTh>
+        <MudTh>Datum povrata</MudTh>
+        <MudTh>Zadužio</MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Oprema">@context.InventoryNumber — @context.EquipmentName</MudTd>
+        <MudTd DataLabel="Zaposlenik">@context.EmployeeName</MudTd>
+        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Datum zaduženja">@context.AssignedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+        <MudTd DataLabel="Datum povrata">@(context.ReturnedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+        <MudTd DataLabel="Zadužio">@context.AssignedByName</MudTd>
+        <MudTd DataLabel="Akcije">
+            @if (context.AssignmentStatusId == 1)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.AssignmentReturn" Size="Size.Small" OnClick="@(() => ReturnAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Vrati {context.EquipmentName}" })" />
+                <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" OnClick="@(() => OpenTransferDialogAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Premjesti {context.EquipmentName}" })" />
+            }
+            <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" OnClick="@(() => OpenChangeLocationDialogAsync(context))"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Promijeni lokaciju {context.EquipmentName}" })" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema zaduženja za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje zaduženja…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<AssignmentDto> _table = null!;
+    private List<EquipmentListItemDto> _equipmentOptions = new();
+    private List<LookupDto> _employees = new();
+    private List<LookupDto> _statuses = new();
+    private int? _equipmentId;
+    private int? _employeeId;
+    private int? _statusId;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var equipmentTask = Api.GetAsync<PagedResult<EquipmentListItemDto>>("api/equipment?PageSize=100");
+        var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees");
+        var statusesTask = Api.GetAsync<List<LookupDto>>("api/lookups/assignmentstatuses");
+        await Task.WhenAll(equipmentTask, employeesTask, statusesTask);
+
+        if (equipmentTask.Result.IsSuccess)
+        {
+            _equipmentOptions = equipmentTask.Result.Value!.Items.ToList();
+        }
+        if (employeesTask.Result.IsSuccess)
+        {
+            _employees = employeesTask.Result.Value!;
+        }
+        if (statusesTask.Result.IsSuccess)
+        {
+            _statuses = statusesTask.Result.Value!;
+        }
+    }
+
+    private async Task<TableData<AssignmentDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (_equipmentId is int equipmentId)
+        {
+            queryParams["EquipmentId"] = equipmentId.ToString();
+        }
+        if (_employeeId is int employeeId)
+        {
+            queryParams["EmployeeId"] = employeeId.ToString();
+        }
+        if (_statusId is int statusId)
+        {
+            queryParams["StatusId"] = statusId.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/assignments", queryParams);
+        var result = await Api.GetAsync<PagedResult<AssignmentDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<AssignmentDto> { TotalItems = 0, Items = Array.Empty<AssignmentDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<AssignmentDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnEquipmentFilterChangedAsync(int? value)
+    {
+        _equipmentId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnEmployeeFilterChangedAsync(int? value)
+    {
+        _employeeId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnStatusFilterChangedAsync(int? value)
+    {
+        _statusId = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _equipmentId = null;
+        _employeeId = null;
+        _statusId = null;
+        await _table.ReloadServerData();
+    }
+
+    private static readonly DialogOptions AssignmentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenAssignDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<AssignDialog>("Nova dodjela", AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenTransferDialogAsync(AssignmentDto row)
+    {
+        var parameters = new DialogParameters<TransferDialog>
+        {
+            { x => x.EquipmentId, row.EquipmentId },
+            { x => x.CurrentEmployeeName, row.EmployeeName },
+        };
+        var dialogReference = await DialogService.ShowAsync<TransferDialog>("Premjesti opremu", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenChangeLocationDialogAsync(AssignmentDto row)
+    {
+        var parameters = new DialogParameters<ChangeLocationDialog> { { x => x.EquipmentId, row.EquipmentId } };
+        var dialogReference = await DialogService.ShowAsync<ChangeLocationDialog>("Promijeni lokaciju", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Lokacija je promijenjena.", Severity.Success);
+        }
+    }
+
+    private async Task ReturnAsync(AssignmentDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Vratiti opremu?",
+            $"Zaduženje opreme „{row.EquipmentName}” ({row.InventoryNumber}) kod zaposlenika {row.EmployeeName} bit će zatvoreno.",
+            "Vrati",
+            Color.Primary);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/assignments/{row.Id}/return");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je vraćena.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+}

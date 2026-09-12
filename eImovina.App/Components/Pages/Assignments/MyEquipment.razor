@@ -1,0 +1,67 @@
+@page "/my-equipment"
+@attribute [Authorize]
+@using eImovina.Shared.Assignments
+@inject ApiClient Api
+
+<PageTitle>Moja oprema — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Moja oprema</MudText>
+
+@if (_loading)
+{
+    <LoadingPanel Message="Učitavanje opreme…" />
+}
+else if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
+}
+else if (_items.Count == 0)
+{
+    <EmptyState Message="Trenutačno nemate zaduženu opremu." />
+}
+else
+{
+    <MudTable T="MyAssignmentDto" Items="_items" Hover="true" Dense="true">
+        <HeaderContent>
+            <MudTh>Inventurni broj</MudTh>
+            <MudTh>Naziv</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Zaduženo od</MudTh>
+            <MudTh>Napomena</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
+            <MudTd DataLabel="Naziv">@context.EquipmentName</MudTd>
+            <MudTd DataLabel="Status">@context.StatusName</MudTd>
+            <MudTd DataLabel="Zaduženo od">@context.AssignedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+            <MudTd DataLabel="Napomena">@(context.Note ?? "—")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<MyAssignmentDto> _items = new();
+    private bool _loading = true;
+    private string? _loadError;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<MyAssignmentDto>>("api/assignments/mine");
+        _loading = false;
+
+        if (result.IsSuccess)
+        {
+            _items = result.Value!;
+        }
+        else
+        {
+            _loadError = result.Error!.Message;
+        }
+    }
+}
