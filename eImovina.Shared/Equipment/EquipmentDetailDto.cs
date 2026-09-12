@@ -16,4 +16,8 @@ public sealed record EquipmentDetailDto(
     DateOnly? PurchaseDate,
     string? Notes,
     bool IsArchived,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? CurrentAssigneeName,
+    int AssignmentHistoryCount,
+    int FileCount,
+    int WriteOffRequestCount);

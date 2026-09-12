@@ -1,0 +1,140 @@
+@page "/equipment/{Id:int}"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using eImovina.Shared.Equipment
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_equipment?.Name ?? "Oprema") — e-Imovina</PageTitle>
+
+@if (_loading)
+{
+    <LoadingPanel Message="Učitavanje opreme…" />
+}
+else if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
+}
+else if (_equipment is not null)
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">@_equipment.Name</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Href="@($"/equipment/{Id}/edit")">Uredi</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Archive" OnClick="ArchiveAsync">Arhiviraj</MudButton>
+        </MudStack>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Inventurni broj</MudText><MudText>@_equipment.InventoryNumber</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Serijski broj</MudText><MudText>@(_equipment.SerialNumber ?? "—")</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Status</MudText><MudText>@_equipment.StatusName</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Kategorija</MudText><MudText>@_equipment.CategoryName</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Lokacija</MudText><MudText>@_equipment.LocationName</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Zadužio</MudText><MudText>@(_equipment.CurrentAssigneeName ?? "Nije zaduženo")</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Vrijednost</MudText><MudText>@(_equipment.PurchaseValue is decimal v ? $"{v:0.00} {_equipment.Currency}" : "—")</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Datum nabave</MudText><MudText>@(_equipment.PurchaseDate?.ToString("dd.MM.yyyy.") ?? "—")</MudText></MudItem>
+            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.caption">Status arhive</MudText><MudText>@(_equipment.IsArchived ? "Arhivirano" : "Aktivno")</MudText></MudItem>
+            <MudItem xs="12"><MudText Typo="Typo.caption">Napomene</MudText><MudText>@(_equipment.Notes ?? "—")</MudText></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Datoteke</MudText>
+                @if (_equipment.FileCount > 0)
+                {
+                    <MudText>Ukupno datoteka: @_equipment.FileCount</MudText>
+                }
+                else
+                {
+                    <EmptyState Message="Još nema datoteka." />
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Povijest zaduženja</MudText>
+                @if (_equipment.AssignmentHistoryCount > 0)
+                {
+                    <MudText>Ukupno zaduženja: @_equipment.AssignmentHistoryCount</MudText>
+                }
+                else
+                {
+                    <EmptyState Message="Još nema zaduženja." />
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Zahtjevi za otpis</MudText>
+                @if (_equipment.WriteOffRequestCount > 0)
+                {
+                    <MudText>Ukupno zahtjeva: @_equipment.WriteOffRequestCount</MudText>
+                }
+                else
+                {
+                    <EmptyState Message="Još nema zahtjeva za otpis." />
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudButton Href="/equipment" Variant="Variant.Text" Class="mt-4">Natrag na popis</MudButton>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _loading = true;
+    private string? _loadError;
+    private EquipmentDetailDto? _equipment;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<EquipmentDetailDto>($"api/equipment/{Id}");
+        _loading = false;
+
+        if (result.IsSuccess)
+        {
+            _equipment = result.Value;
+        }
+        else
+        {
+            _loadError = result.Error!.Message;
+        }
+    }
+
+    private async Task ArchiveAsync()
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Arhivirati opremu?",
+            $"Oprema „{_equipment!.Name}” ({_equipment.InventoryNumber}) bit će arhivirana.",
+            "Arhiviraj",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.DeleteAsync($"api/equipment/{Id}");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je arhivirana.", Severity.Success);
+            Navigation.NavigateTo("/equipment");
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+}

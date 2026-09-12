@@ -96,7 +96,14 @@ public class EquipmentController : ControllerBase
             select new EquipmentDetailDto(
                 e.Id, e.InventoryNumber, e.SerialNumber, e.Name,
                 e.EquipmentCategoryId, c.Name, e.EquipmentStatusId, s.Name, e.CurrentLocationId, l.Name,
-                e.PurchaseValue, e.Currency, e.PurchaseDate, e.Notes, e.IsArchived, e.CreatedAtUtc)
+                e.PurchaseValue, e.Currency, e.PurchaseDate, e.Notes, e.IsArchived, e.CreatedAtUtc,
+                (from a in _db.EquipmentAssignments
+                 join emp in _db.Employees on a.EmployeeId equals emp.Id
+                 where a.EquipmentId == e.Id && a.AssignmentStatusId == 1
+                 select emp.FirstName + " " + emp.LastName).FirstOrDefault(),
+                _db.EquipmentAssignments.Count(a => a.EquipmentId == e.Id),
+                _db.EquipmentFiles.Count(f => f.EquipmentId == e.Id),
+                _db.WriteOffRequests.Count(w => w.EquipmentId == e.Id))
         ).SingleOrDefaultAsync(ct);
 
         return dto is null ? NotFound() : Ok(dto);
@@ -155,7 +162,8 @@ public class EquipmentController : ControllerBase
         var dto = new EquipmentDetailDto(
             equipment.Id, equipment.InventoryNumber, equipment.SerialNumber, equipment.Name,
             equipment.EquipmentCategoryId, categoryName, equipment.EquipmentStatusId, statusName, equipment.CurrentLocationId, locationName,
-            equipment.PurchaseValue, equipment.Currency, equipment.PurchaseDate, equipment.Notes, equipment.IsArchived, equipment.CreatedAtUtc);
+            equipment.PurchaseValue, equipment.Currency, equipment.PurchaseDate, equipment.Notes, equipment.IsArchived, equipment.CreatedAtUtc,
+            CurrentAssigneeName: null, AssignmentHistoryCount: 0, FileCount: 0, WriteOffRequestCount: 0);
 
         return CreatedAtAction(nameof(GetEquipmentById), new { id = equipment.Id }, dto);
     }

@@ -1,0 +1,193 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Equipment
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudForm @ref="_form" Model="@_model">
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudTextField T="string" Label="Inventurni broj" @bind-Value="_model.InventoryNumber" For="@(() => _model.InventoryNumber)" Immediate="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField T="string" Label="Serijski broj" @bind-Value="_model.SerialNumber" For="@(() => _model.SerialNumber)" Immediate="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" Label="Naziv" @bind-Value="_model.Name" For="@(() => _model.Name)" Immediate="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" Label="Kategorija" @bind-Value="_model.EquipmentCategoryId" For="@(() => _model.EquipmentCategoryId)" Variant="Variant.Outlined">
+                @foreach (var category in _categories)
+                {
+                    <MudSelectItem T="int" Value="@category.Id">@category.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" Label="Status" @bind-Value="_model.EquipmentStatusId" For="@(() => _model.EquipmentStatusId)" Variant="Variant.Outlined">
+                @foreach (var status in _statuses)
+                {
+                    <MudSelectItem T="int" Value="@status.Id">@status.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" Label="Lokacija" @bind-Value="_model.CurrentLocationId" For="@(() => _model.CurrentLocationId)" Variant="Variant.Outlined">
+                @foreach (var location in _locations)
+                {
+                    <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="decimal?" Label="Vrijednost" @bind-Value="_model.PurchaseValue" For="@(() => _model.PurchaseValue)" Variant="Variant.Outlined" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField T="string" Label="Valuta" @bind-Value="_model.Currency" For="@(() => _model.Currency)" Immediate="true" Variant="Variant.Outlined" MaxLength="3" Placeholder="EUR" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker Label="Datum nabave" @bind-Date="_model.PurchaseDate" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" Label="Napomene" @bind-Value="_model.Notes" For="@(() => _model.Notes)" Immediate="true" Variant="Variant.Outlined" Lines="3" />
+        </MudItem>
+    </MudGrid>
+</MudForm>
+@if (_errorMessage is not null)
+{
+    <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+}
+<MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4" Spacing="2">
+    <MudButton Href="/equipment" Variant="Variant.Text">Odustani</MudButton>
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Spremi</MudButton>
+</MudStack>
+
+@code {
+    [Parameter] public EquipmentDetailDto? Existing { get; set; }
+    [Parameter] public EventCallback<int> OnSaved { get; set; }
+
+    private MudForm _form = null!;
+    private readonly EquipmentFormModel _model = new();
+    private List<LookupDto> _categories = new();
+    private List<LookupDto> _statuses = new();
+    private List<LocationListItemDto> _locations = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    private bool IsEdit => Existing is not null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Existing is not null)
+        {
+            _model.InventoryNumber = Existing.InventoryNumber;
+            _model.SerialNumber = Existing.SerialNumber;
+            _model.Name = Existing.Name;
+            _model.EquipmentCategoryId = Existing.EquipmentCategoryId;
+            _model.EquipmentStatusId = Existing.EquipmentStatusId;
+            _model.CurrentLocationId = Existing.CurrentLocationId;
+            _model.PurchaseValue = Existing.PurchaseValue;
+            _model.Currency = Existing.Currency;
+            _model.PurchaseDate = Existing.PurchaseDate?.ToDateTime(TimeOnly.MinValue);
+            _model.Notes = Existing.Notes;
+        }
+
+        var categoriesTask = Api.GetAsync<List<LookupDto>>("api/lookups/equipmentcategories");
+        var statusesTask = Api.GetAsync<List<LookupDto>>("api/lookups/equipmentstatuses");
+        var locationsTask = Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+        await Task.WhenAll(categoriesTask, statusesTask, locationsTask);
+
+        if (categoriesTask.Result.IsSuccess)
+        {
+            _categories = categoriesTask.Result.Value!;
+        }
+        if (statusesTask.Result.IsSuccess)
+        {
+            _statuses = statusesTask.Result.Value!;
+        }
+        if (locationsTask.Result.IsSuccess)
+        {
+            _locations = locationsTask.Result.Value!.Items.ToList();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var purchaseDate = _model.PurchaseDate is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+
+        bool success;
+        string? errorMessage;
+        int savedId;
+
+        if (IsEdit)
+        {
+            var result = await Api.PutAsync<EquipmentUpdateDto>(
+                $"api/equipment/{Existing!.Id}",
+                new EquipmentUpdateDto(_model.InventoryNumber, _model.SerialNumber, _model.Name, _model.EquipmentCategoryId, _model.EquipmentStatusId, _model.CurrentLocationId, _model.PurchaseValue, _model.Currency, purchaseDate, _model.Notes));
+            success = result.IsSuccess;
+            errorMessage = result.Error?.Message;
+            savedId = Existing!.Id;
+        }
+        else
+        {
+            var result = await Api.PostAsync<EquipmentCreateDto, EquipmentDetailDto>(
+                "api/equipment",
+                new EquipmentCreateDto(_model.InventoryNumber, _model.SerialNumber, _model.Name, _model.EquipmentCategoryId, _model.EquipmentStatusId, _model.CurrentLocationId, _model.PurchaseValue, _model.Currency, purchaseDate, _model.Notes));
+            success = result.IsSuccess;
+            errorMessage = result.Error?.Message;
+            savedId = result.IsSuccess ? result.Value!.Id : 0;
+        }
+
+        _saving = false;
+
+        if (success)
+        {
+            await OnSaved.InvokeAsync(savedId);
+        }
+        else
+        {
+            _errorMessage = errorMessage;
+        }
+    }
+
+    private sealed class EquipmentFormModel
+    {
+        [Required(ErrorMessage = "Inventurni broj je obavezan.")]
+        [MaxLength(50)]
+        public string InventoryNumber { get; set; } = string.Empty;
+
+        [MaxLength(100)]
+        public string? SerialNumber { get; set; }
+
+        [Required(ErrorMessage = "Naziv je obavezan.")]
+        [MaxLength(200)]
+        public string Name { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati kategoriju.")]
+        public int EquipmentCategoryId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati status.")]
+        public int EquipmentStatusId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati lokaciju.")]
+        public int CurrentLocationId { get; set; }
+
+        public decimal? PurchaseValue { get; set; }
+
+        [MaxLength(3)]
+        public string? Currency { get; set; }
+
+        public DateTime? PurchaseDate { get; set; }
+
+        [MaxLength(1000)]
+        public string? Notes { get; set; }
+    }
+}

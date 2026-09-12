@@ -1,0 +1,9 @@
+@page "/equipment/create"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@inject NavigationManager Navigation
+
+<PageTitle>Nova oprema — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Nova oprema</MudText>
+
+<EquipmentForm OnSaved="@(id => Navigation.NavigateTo($"/equipment/{id}"))" />

@@ -58,7 +58,7 @@
             Poništi filtere
         </MudButton>
         <MudSpacer />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/equipment/create">
             Nova oprema
         </MudButton>
     </ToolBarContent>
@@ -69,6 +69,7 @@
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="location">Lokacija</MudTableSortLabel></MudTh>
         <MudTh>Vrijednost</MudTh>
+        <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
@@ -77,6 +78,14 @@
         <MudTd DataLabel="Status">@context.StatusName</MudTd>
         <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
         <MudTd DataLabel="Vrijednost">@(context.PurchaseValue is decimal v ? $"{v:0.00} {context.Currency}" : "—")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/equipment/{context.Id}")"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji {context.Name}" })" />
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Href="@($"/equipment/{context.Id}/edit")"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
+            <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Error" OnClick="@(() => ArchiveAsync(context))"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Arhiviraj {context.Name}" })" />
+        </MudTd>
     </RowTemplate>
     <NoRecordsContent>
         <EmptyState Message="Nema opreme za prikaz." />
@@ -214,15 +223,27 @@
         await _table.ReloadServerData();
     }
 
-    private async Task OpenCreateDialogAsync()
+    private async Task ArchiveAsync(EquipmentListItemDto row)
     {
-        var dialogReference = await DialogService.ShowAsync<EquipmentQuickCreateDialog>(
-            "Nova oprema", new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
-        var result = await dialogReference.Result;
-        if (result is { Canceled: false })
+        var confirmed = await DialogService.ConfirmAsync(
+            "Arhivirati opremu?",
+            $"Oprema „{row.Name}” ({row.InventoryNumber}) bit će arhivirana.",
+            "Arhiviraj",
+            Color.Error);
+        if (!confirmed)
         {
-            Snackbar.Add("Oprema je dodana.", Severity.Success);
+            return;
+        }
+
+        var result = await Api.DeleteAsync($"api/equipment/{row.Id}");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je arhivirana.", Severity.Success);
             await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
         }
     }
 }
