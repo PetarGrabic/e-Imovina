@@ -1,0 +1,99 @@
+@using eImovina.Shared.Inventories
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">@EquipmentLabel</MudText>
+        <MudStack Spacing="3">
+            <MudRadioGroup T="bool" @bind-Value="_isFound">
+                <MudRadio T="bool" Value="true" Color="Color.Success">Pronađeno</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Error">Nedostaje</MudRadio>
+            </MudRadioGroup>
+            @if (_isFound)
+            {
+                <MudSelect T="int?" Label="Lokacija pronalaska" @bind-Value="_foundLocationId" Variant="Variant.Outlined">
+                    @foreach (var location in _locations)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)location.Id)">@location.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudCheckBox T="bool" @bind-Value="_isDamaged" Label="Oštećeno" Color="Color.Warning" />
+            }
+            <MudTextField T="string" Label="Napomena" @bind-Value="_note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+        </MudStack>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public int InventoryId { get; set; }
+    [Parameter, EditorRequired] public int ItemId { get; set; }
+    [Parameter] public string EquipmentLabel { get; set; } = string.Empty;
+    [Parameter] public bool? InitialIsFound { get; set; }
+    [Parameter] public int? InitialFoundLocationId { get; set; }
+    [Parameter] public bool? InitialIsDamaged { get; set; }
+    [Parameter] public string? InitialNote { get; set; }
+
+    private List<LocationListItemDto> _locations = new();
+    private bool _isFound;
+    private int? _foundLocationId;
+    private bool _isDamaged;
+    private string? _note;
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Not-yet-processed items (InitialIsFound is null) default to "Pronađeno" - the more common
+        // case - but nothing is saved until the user explicitly submits.
+        _isFound = InitialIsFound ?? true;
+        _foundLocationId = InitialFoundLocationId;
+        _isDamaged = InitialIsDamaged ?? false;
+        _note = InitialNote;
+
+        var result = await Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+        if (result.IsSuccess)
+        {
+            _locations = result.Value!.Items.ToList();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_isFound && _foundLocationId is null)
+        {
+            _errorMessage = "Potrebno je odabrati lokaciju na kojoj je oprema pronađena.";
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PutAsync<UpdateInventoryItemDto, InventoryItemDto>(
+            $"api/inventories/{InventoryId}/items/{ItemId}",
+            new UpdateInventoryItemDto(_isFound, _isFound ? _foundLocationId : null, _isFound && _isDamaged, _note));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

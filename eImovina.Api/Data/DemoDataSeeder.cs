@@ -22,16 +22,16 @@ public static class DemoDataSeeder
             return; // demo data already present - do nothing.
         }
 
-        // Splitsko-Dalmatinska županija - locations #1-4 keep their original role (Ured/Škola/
-        // Skladište/one Terenska lokacija with no equipment, see below); #5-6 are new.
+        // Splitsko-Dalmatinska županija - 4 locations (Ured/Škola/Skladište/one Terenska lokacija
+        // with no equipment, see below). Two further Terenska lokacija entries (Ispostava Makarska,
+        // Ispostava Imotski) were removed as excessive for a 5-employee demo set - their equipment
+        // was repointed to Centralno skladište (see the equipment list below).
         var locations = new List<Location>
         {
             new() { Name = "Županijska zgrada - Split", Code = "LOC-001", LocationTypeId = 1 /*Ured*/, Address = "Vukovarska ulica 1, 21000 Split" },
             new() { Name = "OŠ Manuš", Code = "LOC-002", LocationTypeId = 2 /*Škola*/, Address = "Manuška poljana 1, 21000 Split" },
             new() { Name = "Centralno skladište", Code = "LOC-003", LocationTypeId = 3 /*Skladište*/, Address = "Gospodarska zona Kaštel Sućurac, 21212 Kaštel Sućurac" },
             new() { Name = "Ispostava Sinj", Code = "LOC-004", LocationTypeId = 4 /*Terenska lokacija*/, Address = "Vrlička ulica 5, 21230 Sinj" },
-            new() { Name = "Ispostava Makarska", Code = "LOC-005", LocationTypeId = 4, Address = "Kralja Petra Krešimira IV 2, 21300 Makarska" },
-            new() { Name = "Ispostava Imotski", Code = "LOC-006", LocationTypeId = 4, Address = "Ante Starčevića 10, 21260 Imotski" },
         };
         db.Locations.AddRange(locations);
         await db.SaveChangesAsync(ct);
@@ -44,6 +44,9 @@ public static class DemoDataSeeder
             new() { FirstName = "Ana", LastName = "Kovačić", Email = "ana.kovacic@e-imovina.hr", JobTitle = "Ravnateljica", LocationId = locations[1].Id },
             new() { FirstName = "Marko", LastName = "Novak", Email = "marko.novak@e-imovina.hr", JobTitle = "Skladištar", LocationId = locations[2].Id },
             new() { FirstName = "Petra", LastName = "Babić", Email = "petra.babic@e-imovina.hr", JobTitle = "Terenski koordinator", LocationId = locations[3].Id },
+            // Plain Employee-only demo account (alongside Ivan) now that Petra also holds
+            // LocationResponsible - keeps a distinct "no elevated role" ownership-denial example.
+            new() { FirstName = "Luka", LastName = "Perić", Email = "luka.peric@e-imovina.hr", JobTitle = "Administrativni referent", LocationId = locations[0].Id },
         };
         db.Employees.AddRange(employees);
         await db.SaveChangesAsync(ct);
@@ -56,11 +59,11 @@ public static class DemoDataSeeder
             new() { InventoryNumber = "INV-0004", Name = "Uredski stol", EquipmentCategoryId = 3 /*Namještaj*/, EquipmentStatusId = 1, CurrentLocationId = locations[2].Id },
             new() { InventoryNumber = "INV-0005", Name = "Bušilica Bosch", EquipmentCategoryId = 4 /*Alat*/, EquipmentStatusId = 3 /*Na servisu*/, CurrentLocationId = locations[2].Id },
             new() { InventoryNumber = "INV-0006", Name = "Monitor Dell 24\"", EquipmentCategoryId = 1, EquipmentStatusId = 4 /*Nedostaje*/, CurrentLocationId = locations[1].Id },
-            new() { InventoryNumber = "INV-0007", Name = "Uredska stolica", EquipmentCategoryId = 3, EquipmentStatusId = 1, CurrentLocationId = locations[4].Id, PurchaseValue = 90.00m, Currency = "EUR" },
+            new() { InventoryNumber = "INV-0007", Name = "Uredska stolica", EquipmentCategoryId = 3, EquipmentStatusId = 1, CurrentLocationId = locations[2].Id, PurchaseValue = 90.00m, Currency = "EUR" },
             new() { InventoryNumber = "INV-0008", Name = "Multifunkcijski uređaj Canon", EquipmentCategoryId = 2, EquipmentStatusId = 2 /*Zaduženo*/, CurrentLocationId = locations[1].Id, PurchaseValue = 410.00m, Currency = "EUR" },
             new() { InventoryNumber = "INV-0009", Name = "Projektor Epson EB-X41", EquipmentCategoryId = 5 /*Ostalo*/, EquipmentStatusId = 1, CurrentLocationId = locations[1].Id, PurchaseValue = 480.00m, Currency = "EUR" },
-            new() { InventoryNumber = "INV-0010", Name = "Službeno vozilo Škoda Octavia", EquipmentCategoryId = 5, EquipmentStatusId = 2 /*Zaduženo*/, CurrentLocationId = locations[4].Id, PurchaseValue = 18000.00m, Currency = "EUR" },
-            new() { InventoryNumber = "INV-0011", Name = "Prijenosno računalo Lenovo ThinkPad", EquipmentCategoryId = 1, EquipmentStatusId = 5 /*Otpisano*/, CurrentLocationId = locations[5].Id },
+            new() { InventoryNumber = "INV-0010", Name = "Službeno vozilo Škoda Octavia", EquipmentCategoryId = 5, EquipmentStatusId = 2 /*Zaduženo*/, CurrentLocationId = locations[2].Id, PurchaseValue = 18000.00m, Currency = "EUR" },
+            new() { InventoryNumber = "INV-0011", Name = "Prijenosno računalo Lenovo ThinkPad", EquipmentCategoryId = 1, EquipmentStatusId = 5 /*Otpisano*/, CurrentLocationId = locations[2].Id },
             new() { InventoryNumber = "INV-0012", Name = "Bušilica Makita", EquipmentCategoryId = 4, EquipmentStatusId = 2 /*Zaduženo*/, CurrentLocationId = locations[2].Id, PurchaseValue = 140.00m, Currency = "EUR" },
         };
         db.Equipment.AddRange(equipment);
@@ -79,10 +82,13 @@ public static class DemoDataSeeder
         var manager = MakeUser("inventar.manager", "inventar.manager@e-imovina.hr", employeeId: null);
         var anaUser = MakeUser("ana.kovacic", "ana.kovacic@e-imovina.hr", employeeId: employees[1].Id); // multi-role: LocationResponsible + Employee
         var markoUser = MakeUser("marko.novak", "marko.novak@e-imovina.hr", employeeId: employees[2].Id); // multi-role: LocationResponsible + Employee
+        // Petra also holds LocationResponsible (below) so Ispostava Sinj has an eligible inventory
+        // responsible person - Luka is the plain Employee-only demo account instead.
         var ivanUser = MakeUser("ivan.horvat", "ivan.horvat@e-imovina.hr", employeeId: employees[0].Id);
         var petraUser = MakeUser("petra.babic", "petra.babic@e-imovina.hr", employeeId: employees[3].Id);
+        var lukaUser = MakeUser("luka.peric", "luka.peric@e-imovina.hr", employeeId: employees[4].Id);
 
-        db.AppUsers.AddRange(admin, manager, anaUser, markoUser, ivanUser, petraUser);
+        db.AppUsers.AddRange(admin, manager, anaUser, markoUser, ivanUser, petraUser, lukaUser);
         await db.SaveChangesAsync(ct);
 
         db.AppUserRoles.AddRange(
@@ -93,7 +99,9 @@ public static class DemoDataSeeder
             new AppUserRole { AppUserId = markoUser.Id, AppRoleId = 3 }, // LocationResponsible
             new AppUserRole { AppUserId = markoUser.Id, AppRoleId = 4 }, // + Employee (multi-role demo account)
             new AppUserRole { AppUserId = ivanUser.Id, AppRoleId = 4 },  // Employee
-            new AppUserRole { AppUserId = petraUser.Id, AppRoleId = 4 }  // Employee
+            new AppUserRole { AppUserId = petraUser.Id, AppRoleId = 3 }, // LocationResponsible
+            new AppUserRole { AppUserId = petraUser.Id, AppRoleId = 4 }, // + Employee (multi-role demo account)
+            new AppUserRole { AppUserId = lukaUser.Id, AppRoleId = 4 }   // Employee (plain, no elevated role)
         );
 
         // Real assignment history, not just current-state snapshots: INV-0003 shows a full

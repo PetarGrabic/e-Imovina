@@ -13,4 +13,5 @@ public sealed class EquipmentQuery : ListQuery
     public int? StatusId { get; set; }
     public int? LocationId { get; set; }
     public int? EmployeeId { get; set; }
+    public bool? IsArchived { get; set; }
 }

@@ -10,4 +10,5 @@ public sealed record EquipmentListItemDto(
     string LocationName,
     decimal? PurchaseValue,
     string? Currency,
-    int? CoverFileId);
+    int? CoverFileId,
+    bool IsArchived);

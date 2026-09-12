@@ -1,0 +1,309 @@
+@page "/inventories"
+@attribute [Authorize(Policy = "LocationWork")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.Inventories
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Inventure — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Inventure</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="InventoryListDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <AuthorizeView Policy="InventoryManagement" Context="_">
+            <Authorized>
+                <MudSelect T="int?" Label="Lokacija" Value="_locationId" ValueChanged="OnLocationFilterChangedAsync"
+                           Class="mr-4" Style="max-width: 200px;">
+                    <MudSelectItem T="int?" Value="@((int?)null)">Sve lokacije</MudSelectItem>
+                    @foreach (var location in _locations)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)location.Id)">@location.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </Authorized>
+        </AuthorizeView>
+        <MudSelect T="int?" Label="Status" Value="_statusId" ValueChanged="OnStatusFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi statusi</MudSelectItem>
+            @foreach (var status in _statuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <AuthorizeView Policy="InventoryManagement" Context="_">
+            <Authorized>
+                <MudSelect T="int?" Label="Odgovorna osoba" Value="_responsibleEmployeeId" ValueChanged="OnResponsibleFilterChangedAsync"
+                           Class="mr-4" Style="max-width: 200px;">
+                    <MudSelectItem T="int?" Value="@((int?)null)">Sve osobe</MudSelectItem>
+                    @foreach (var employee in _employees)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </Authorized>
+        </AuthorizeView>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+            Nova inventura
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="location">Lokacija</MudTableSortLabel></MudTh>
+        <MudTh>Odgovorna osoba</MudTh>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="opened">Otvorena</MudTableSortLabel></MudTh>
+        <MudTh>Završena</MudTh>
+        <MudTh>Zaključana</MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+        <MudTd DataLabel="Odgovorna osoba">@context.ResponsibleEmployeeName</MudTd>
+        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Otvorena">@(context.OpenedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+        <MudTd DataLabel="Završena">@(context.CompletedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+        <MudTd DataLabel="Zaključana">@(context.LockedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/inventories/{context.Id}")"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji inventure na lokaciji {context.LocationName}" })" />
+            @if (context.InventoryStatusId == 1)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" OnClick="@(() => OpenInventoryAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Otvori inventuru na lokaciji {context.LocationName}" })" />
+            }
+            else if (context.InventoryStatusId is 2 or 3)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" OnClick="@(() => CompleteInventoryAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Završi inventuru na lokaciji {context.LocationName}" })" />
+            }
+            else if (context.InventoryStatusId == 4)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Error" OnClick="@(() => LockInventoryAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Zaključaj inventuru na lokaciji {context.LocationName}" })" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema inventura za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje inventura…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthStateTask { get; set; } = null!;
+
+    private MudTable<InventoryListDto> _table = null!;
+    private List<LocationListItemDto> _locations = new();
+    private List<LookupDto> _statuses = new();
+    private List<LookupDto> _employees = new();
+    private bool _isManager;
+    private int? _locationId;
+    private int? _statusId;
+    private int? _responsibleEmployeeId;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateTask;
+        _isManager = authState.User.IsInRole(RoleNames.Admin) || authState.User.IsInRole(RoleNames.InventoryManager);
+
+        var statusesTask = Api.GetAsync<List<LookupDto>>("api/lookups/inventorystatuses");
+
+        if (_isManager)
+        {
+            // Both the Lokacija and Odgovorna osoba filters are manager-only (see the two
+            // AuthorizeView blocks above) - a LocationResponsible caller is already force-scoped to
+            // their own location server-side, so these filters would be redundant/misleading for
+            // them and their supporting lookups are skipped entirely.
+            var locationsTask = Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+            var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees?role=LocationResponsible");
+            await Task.WhenAll(locationsTask, employeesTask, statusesTask);
+
+            if (locationsTask.Result.IsSuccess)
+            {
+                _locations = locationsTask.Result.Value!.Items.ToList();
+            }
+            if (employeesTask.Result.IsSuccess)
+            {
+                _employees = employeesTask.Result.Value!;
+            }
+        }
+        else
+        {
+            await statusesTask;
+        }
+
+        if (statusesTask.Result.IsSuccess)
+        {
+            _statuses = statusesTask.Result.Value!;
+        }
+    }
+
+    private async Task<TableData<InventoryListDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (_locationId is int locationId)
+        {
+            queryParams["LocationId"] = locationId.ToString();
+        }
+        if (_statusId is int statusId)
+        {
+            queryParams["InventoryStatusId"] = statusId.ToString();
+        }
+        if (_responsibleEmployeeId is int responsibleEmployeeId)
+        {
+            queryParams["ResponsibleEmployeeId"] = responsibleEmployeeId.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/inventories", queryParams);
+        var result = await Api.GetAsync<PagedResult<InventoryListDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<InventoryListDto> { TotalItems = 0, Items = Array.Empty<InventoryListDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<InventoryListDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnLocationFilterChangedAsync(int? value)
+    {
+        _locationId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnStatusFilterChangedAsync(int? value)
+    {
+        _statusId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnResponsibleFilterChangedAsync(int? value)
+    {
+        _responsibleEmployeeId = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _locationId = null;
+        _statusId = null;
+        _responsibleEmployeeId = null;
+        await _table.ReloadServerData();
+    }
+
+    private static readonly DialogOptions InventoryDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<CreateInventoryDialog>("Nova inventura", InventoryDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenInventoryAsync(InventoryListDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Otvoriti inventuru?",
+            $"Ovime će se formirati stavke inventure prema opremi trenutačno evidentiranoj na lokaciji „{row.LocationName}”. Ova radnja se ne može poništiti.",
+            "Otvori",
+            Color.Primary);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/inventories/{row.Id}/open");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Inventura je otvorena.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task CompleteInventoryAsync(InventoryListDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Završiti inventuru?",
+            $"Inventura na lokaciji „{row.LocationName}” bit će označena kao završena. Provjerite jesu li sve stavke obrađene.",
+            "Završi",
+            Color.Primary);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/inventories/{row.Id}/complete");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Inventura je završena.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task LockInventoryAsync(InventoryListDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Zaključati inventuru?",
+            $"Inventura na lokaciji „{row.LocationName}” bit će trajno zaključana. Nakon zaključavanja više nije moguće mijenjati nijednu stavku. Ova radnja je nepovratna.",
+            "Zaključaj",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/inventories/{row.Id}/lock");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Inventura je zaključana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+}

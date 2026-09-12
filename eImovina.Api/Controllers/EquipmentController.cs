@@ -43,7 +43,10 @@ public class EquipmentController : ControllerBase
             join c in _db.EquipmentCategories.AsNoTracking() on e.EquipmentCategoryId equals c.Id
             join s in _db.EquipmentStatuses.AsNoTracking() on e.EquipmentStatusId equals s.Id
             join l in _db.Locations.AsNoTracking() on e.CurrentLocationId equals l.Id
-            where !e.IsArchived
+            // Defaults to active-only (matches every existing caller's expectation) - pass
+            // ?IsArchived=true explicitly to see archived equipment instead. A tri-state "both" was
+            // not requested and isn't worth the added complexity here.
+            where e.IsArchived == (query.IsArchived ?? false)
             select new { Equipment = e, CategoryName = c.Name, StatusName = s.Name, LocationName = l.Name };
 
         if (!string.IsNullOrWhiteSpace(query.Text))
@@ -95,7 +98,8 @@ public class EquipmentController : ControllerBase
             .Take(pageSize)
             .Select(x => new EquipmentListItemDto(
                 x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.SerialNumber, x.Equipment.Name, x.CategoryName, x.StatusName, x.LocationName, x.Equipment.PurchaseValue, x.Equipment.Currency,
-                _db.EquipmentFiles.Where(f => f.EquipmentId == x.Equipment.Id && f.IsCoverImage).Select(f => (int?)f.Id).FirstOrDefault()))
+                _db.EquipmentFiles.Where(f => f.EquipmentId == x.Equipment.Id && f.IsCoverImage).Select(f => (int?)f.Id).FirstOrDefault(),
+                x.Equipment.IsArchived))
             .ToListAsync(ct);
 
         return Ok(new PagedResult<EquipmentListItemDto>(items, totalCount, page, pageSize));
@@ -305,6 +309,30 @@ public class EquipmentController : ControllerBase
 
         equipment.IsArchived = true;
         equipment.ArchivedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // Symmetric undo for ArchiveEquipment - no extra validation needed since reactivating changes
+    // nothing but the archive flag itself; every other field was already valid when the row was
+    // created/last edited.
+    [HttpPost("{id:int}/reactivate")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<IActionResult> ReactivateEquipment(int id, CancellationToken ct)
+    {
+        var equipment = await _db.Equipment.FindAsync([id], ct);
+        if (equipment is null)
+        {
+            return NotFound();
+        }
+
+        if (!equipment.IsArchived)
+        {
+            return Problem(detail: "Oprema nije arhivirana.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        equipment.IsArchived = false;
+        equipment.ArchivedAtUtc = null;
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }

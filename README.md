@@ -42,7 +42,8 @@ Lozinka je ista za sve demo račune: **`Demo123!`**
 | `marko.novak` | `Demo123!` | LocationResponsible, Employee |
 | `ana.kovacic` | `Demo123!` | LocationResponsible, Employee |
 | `ivan.horvat` | `Demo123!` | Employee |
-| `petra.babic` | `Demo123!` | Employee |
+| `petra.babic` | `Demo123!` | LocationResponsible, Employee |
+| `luka.peric` | `Demo123!` | Employee |
 
 ## Uloge
 

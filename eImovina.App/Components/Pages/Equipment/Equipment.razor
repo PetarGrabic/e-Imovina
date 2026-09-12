@@ -54,6 +54,11 @@
                 <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
             }
         </MudSelect>
+        <MudSelect T="bool" Label="Status arhive" Value="_isArchived" ValueChanged="OnArchivedFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 160px;">
+            <MudSelectItem T="bool" Value="false">Aktivna</MudSelectItem>
+            <MudSelectItem T="bool" Value="true">Arhivirana</MudSelectItem>
+        </MudSelect>
         <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
             Poništi filtere
         </MudButton>
@@ -94,8 +99,16 @@
                            UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji {context.Name}" })" />
             <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Href="@($"/equipment/{context.Id}/edit")"
                            UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
-            <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Error" OnClick="@(() => ArchiveAsync(context))"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Arhiviraj {context.Name}" })" />
+            @if (context.IsArchived)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Unarchive" Size="Size.Small" Color="Color.Success" OnClick="@(() => ReactivateAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Reaktiviraj {context.Name}" })" />
+            }
+            else
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Error" OnClick="@(() => ArchiveAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Arhiviraj {context.Name}" })" />
+            }
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
@@ -120,6 +133,7 @@
     private int? _statusId;
     private int? _locationId;
     private int? _employeeId;
+    private bool _isArchived;
     private string? _loadError;
 
     protected override async Task OnInitializedAsync()
@@ -184,6 +198,7 @@
         {
             queryParams["EmployeeId"] = employeeId.ToString();
         }
+        queryParams["IsArchived"] = _isArchived.ToString();
 
         var url = QueryHelpers.AddQueryString("api/equipment", queryParams);
         var result = await Api.GetAsync<PagedResult<EquipmentListItemDto>>(url, ct);
@@ -224,6 +239,12 @@
         return _table.ReloadServerData();
     }
 
+    private Task OnArchivedFilterChangedAsync(bool value)
+    {
+        _isArchived = value;
+        return _table.ReloadServerData();
+    }
+
     private async Task ResetFiltersAsync()
     {
         _searchText = null;
@@ -231,6 +252,7 @@
         _statusId = null;
         _locationId = null;
         _employeeId = null;
+        _isArchived = false;
         await _table.ReloadServerData();
     }
 
@@ -250,6 +272,30 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Oprema je arhivirana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task ReactivateAsync(EquipmentListItemDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Reaktivirati opremu?",
+            $"Oprema „{row.Name}” ({row.InventoryNumber}) ponovno će biti aktivna.",
+            "Reaktiviraj",
+            Color.Success);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/equipment/{row.Id}/reactivate");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je reaktivirana.", Severity.Success);
             await _table.ReloadServerData();
         }
         else

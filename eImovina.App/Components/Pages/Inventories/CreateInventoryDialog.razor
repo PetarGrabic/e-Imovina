@@ -1,0 +1,163 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Inventories
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else if (!_isManager && _myLocation is null)
+        {
+            <ErrorAlert Message="Vaš račun nije povezan sa zaposlenikom pa ne možete kreirati inventuru." />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    @if (_isManager)
+                    {
+                        <MudSelect T="int" Label="Lokacija" @bind-Value="_model.LocationId" @bind-Value:after="OnLocationChangedAsync"
+                                   For="@(() => _model.LocationId)" Variant="Variant.Outlined">
+                            @foreach (var location in _locations)
+                            {
+                                <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudSelect T="int?" Label="Odgovorna osoba" @bind-Value="_model.ResponsibleEmployeeId" Variant="Variant.Outlined"
+                                   Disabled="@(_model.LocationId <= 0)">
+                            @foreach (var employee in _employees)
+                            {
+                                <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudTextField T="string" Label="Lokacija" Value="@_myLocation!.Name" ReadOnly="true" Variant="Variant.Outlined" />
+                        <MudText Typo="Typo.caption">Bit ćete postavljeni kao odgovorna osoba.</MudText>
+                    }
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                </MudStack>
+            </MudForm>
+        }
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="@(_saving || _loading || (!_isManager && _myLocation is null))">Kreiraj</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState> AuthStateTask { get; set; } = null!;
+
+    private MudForm _form = null!;
+    private readonly CreateInventoryFormModel _model = new();
+    private bool _isManager;
+    private bool _loading = true;
+    private LookupDto? _myLocation;
+    private List<LocationListItemDto> _locations = new();
+    private List<LookupDto> _employees = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateTask;
+        _isManager = authState.User.IsInRole(RoleNames.Admin) || authState.User.IsInRole(RoleNames.InventoryManager);
+
+        if (_isManager)
+        {
+            var result = await Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+            if (result.IsSuccess)
+            {
+                _locations = result.Value!.Items.ToList();
+            }
+        }
+        else
+        {
+            var result = await Api.GetAsync<LookupDto?>("api/inventories/my-location");
+            if (result.IsSuccess)
+            {
+                _myLocation = result.Value;
+                if (_myLocation is not null)
+                {
+                    _model.LocationId = _myLocation.Id;
+                }
+            }
+        }
+
+        _loading = false;
+    }
+
+    // Re-fetches the Responsible dropdown scoped to the newly-picked location (review gap #6) -
+    // without this, an Admin/Manager could pick an employee from an unrelated location and only
+    // find out via the controller's location-match 400.
+    private async Task OnLocationChangedAsync()
+    {
+        _model.ResponsibleEmployeeId = null;
+        _employees = new();
+
+        if (_model.LocationId > 0)
+        {
+            var result = await Api.GetAsync<List<LookupDto>>($"api/lookups/employees?locationId={_model.LocationId}&role=LocationResponsible");
+            if (result.IsSuccess)
+            {
+                _employees = result.Value!;
+            }
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        if (_isManager && _model.ResponsibleEmployeeId is null)
+        {
+            _errorMessage = "Potrebno je odabrati odgovornu osobu.";
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<CreateInventoryDto, InventoryDetailDto>(
+            "api/inventories",
+            new CreateInventoryDto(_model.LocationId, _isManager ? _model.ResponsibleEmployeeId : null, _model.Note));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class CreateInventoryFormModel
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati lokaciju.")]
+        public int LocationId { get; set; }
+
+        public int? ResponsibleEmployeeId { get; set; }
+
+        [MaxLength(1000)]
+        public string? Note { get; set; }
+    }
+}

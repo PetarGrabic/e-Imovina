@@ -2,11 +2,12 @@
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Početna</MudNavLink>
     <AuthorizeView Policy="LocationWork" Context="_">
         <Authorized>
-            <MudNavLink Href="locations" Icon="@Icons.Material.Filled.LocationOn">Lokacije</MudNavLink>
+            <MudNavLink Href="inventories" Icon="@Icons.Material.Filled.FactCheck">Inventure</MudNavLink>
         </Authorized>
     </AuthorizeView>
     <AuthorizeView Policy="InventoryManagement" Context="_">
         <Authorized>
+            <MudNavLink Href="locations" Icon="@Icons.Material.Filled.LocationOn">Lokacije</MudNavLink>
             <MudNavLink Href="equipment" Icon="@Icons.Material.Filled.Inventory2">Oprema</MudNavLink>
             <MudNavLink Href="assignments" Icon="@Icons.Material.Filled.AssignmentInd">Zaduženja</MudNavLink>
         </Authorized>

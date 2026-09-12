@@ -20,7 +20,7 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = "LocationWork")]
+    [Authorize(Policy = "InventoryManagement")]
     public async Task<ActionResult<PagedResult<LocationListItemDto>>> GetLocations([FromQuery] LocationQuery query, CancellationToken ct)
     {
         var filtered =
@@ -67,7 +67,7 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Policy = "LocationWork")]
+    [Authorize(Policy = "InventoryManagement")]
     public async Task<ActionResult<LocationDetailDto>> GetLocation(int id, CancellationToken ct)
     {
         var dto = await (
@@ -187,11 +187,14 @@ public class LocationsController : ControllerBase
     // employee-relocation workflow, so blocking on staff assignment would make deactivation
     // permanently impossible for any real, staffed location. Only live inventories (Otvorena/U
     // tijeku/Zavrsena) block; a Nacrt or Zakljucana inventory doesn't, since history is preserved
-    // via snapshot columns regardless of the location's IsActive flag.
+    // via snapshot columns regardless of the location's IsActive flag. Equipment only blocks while
+    // NOT archived - ArchiveEquipment never clears CurrentLocationId (a non-nullable column), so
+    // without this filter a location that ever held equipment could never be deactivated again even
+    // after every last item was archived.
     private async Task<bool> IsLocationReferencedAsync(int id, CancellationToken ct)
     {
         var liveInventoryStatusIds = new[] { 2, 3, 4 }; // Otvorena, U tijeku, Završena
-        return await _db.Equipment.AnyAsync(e => e.CurrentLocationId == id, ct)
+        return await _db.Equipment.AnyAsync(e => e.CurrentLocationId == id && !e.IsArchived, ct)
             || await _db.Inventories.AnyAsync(i => i.LocationId == id && liveInventoryStatusIds.Contains(i.InventoryStatusId), ct);
     }
 

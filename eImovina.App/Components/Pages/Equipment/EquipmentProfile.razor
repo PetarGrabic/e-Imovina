@@ -34,7 +34,14 @@ else if (_equipment is not null)
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.SwapHoriz" OnClick="OpenTransferDialogAsync">Premjesti opremu</MudButton>
             }
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.LocationOn" OnClick="OpenChangeLocationDialogAsync">Promijeni lokaciju</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Archive" OnClick="ArchiveAsync">Arhiviraj</MudButton>
+            @if (_equipment.IsArchived)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Unarchive" OnClick="ReactivateAsync">Reaktiviraj</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Archive" OnClick="ArchiveAsync">Arhiviraj</MudButton>
+            }
         </MudStack>
     </MudStack>
 
@@ -454,6 +461,30 @@ else if (_equipment is not null)
         {
             Snackbar.Add("Oprema je arhivirana.", Severity.Success);
             Navigation.NavigateTo("/equipment");
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task ReactivateAsync()
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Reaktivirati opremu?",
+            $"Oprema „{_equipment!.Name}” ({_equipment.InventoryNumber}) ponovno će biti aktivna.",
+            "Reaktiviraj",
+            Color.Success);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/equipment/{Id}/reactivate");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Oprema je reaktivirana.", Severity.Success);
+            await LoadAsync();
         }
         else
         {
