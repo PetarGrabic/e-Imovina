@@ -34,6 +34,7 @@ public class LookupsController : ControllerBase
             "requeststatuses" => _db.RequestStatuses.AsNoTracking().Where(x => x.IsActive).Select(x => new LookupDto(x.Id, x.Name)),
             "writeoffrequeststatuses" => _db.WriteOffRequestStatuses.AsNoTracking().Where(x => x.IsActive).Select(x => new LookupDto(x.Id, x.Name)),
             "roles" => _db.AppRoles.AsNoTracking().Select(x => new LookupDto(x.Id, x.Name)),
+            "employees" => _db.Employees.AsNoTracking().Where(e => e.IsActive).Select(e => new LookupDto(e.Id, e.FirstName + " " + e.LastName)),
             _ => null,
         };
 

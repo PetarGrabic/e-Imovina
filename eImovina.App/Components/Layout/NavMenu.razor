@@ -5,6 +5,11 @@
             <MudNavLink Href="locations" Icon="@Icons.Material.Filled.LocationOn">Lokacije</MudNavLink>
         </Authorized>
     </AuthorizeView>
+    <AuthorizeView Policy="InventoryManagement" Context="_">
+        <Authorized>
+            <MudNavLink Href="equipment" Icon="@Icons.Material.Filled.Inventory2">Oprema</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
     @* TODO(Section 15): remove this Admin-only stub once the real Users page lands. *@
     <AuthorizeView Roles="@RoleNames.Admin" Context="_">
         <Authorized>
