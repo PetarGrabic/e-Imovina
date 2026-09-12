@@ -39,6 +39,20 @@ public class ApiClient
     public Task<ApiResult<T>> DeleteAsync<T>(string requestUri, CancellationToken ct = default)
         => SendAsync<T>(() => _http.DeleteAsync(requestUri, ct), ct);
 
+    // Bodyless POST - e.g. "set as cover", which has nothing to send but the route ids already in
+    // the URL. Uses an empty StringContent rather than a null body to avoid relying on whichever
+    // HttpClient.PostAsync overload's content-nullability happens to be in play.
+    public Task<ApiResult> PostAsync(string requestUri, CancellationToken ct = default)
+        => SendAsync(() => _http.PostAsync(requestUri, new StringContent(string.Empty), ct), ct);
+
+    public Task<ApiResult<T>> PostFileAsync<T>(string requestUri, MultipartFormDataContent content, CancellationToken ct = default)
+        => SendAsync<T>(() => _http.PostAsync(requestUri, content, ct), ct);
+
+    // Raw passthrough for the /files/{id} proxy endpoint (FileProxyEndpoints) - it needs the
+    // response's bytes and Content-Type verbatim, not JSON-deserialized into an ApiResult.
+    public Task<HttpResponseMessage> GetRawAsync(string requestUri, CancellationToken ct = default)
+        => _http.GetAsync(requestUri, ct);
+
     private async Task<ApiResult<T>> SendAsync<T>(Func<Task<HttpResponseMessage>> send, CancellationToken ct)
     {
         HttpResponseMessage response;

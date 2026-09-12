@@ -63,6 +63,7 @@
         </MudButton>
     </ToolBarContent>
     <HeaderContent>
+        <MudTh>Slika</MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="inventorynumber">Inventurni broj</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="name">Naziv</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
@@ -72,6 +73,16 @@
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
+        <MudTd DataLabel="Slika">
+            @if (context.CoverFileId is int coverId)
+            {
+                <MudImage Src="@($"/files/{coverId}")" Alt="@context.Name" ObjectFit="ObjectFit.Cover" Width="48" Height="48" Class="rounded" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.ImageNotSupported" Color="Color.Default" Title="Nema slike" />
+            }
+        </MudTd>
         <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
         <MudTd DataLabel="Naziv">@context.Name</MudTd>
         <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>

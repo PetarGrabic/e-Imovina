@@ -1,6 +1,7 @@
 using MudBlazor.Services;
 using eImovina.App.Auth;
 using eImovina.App.Components;
+using eImovina.App.Files;
 using eImovina.App.Services;
 using eImovina.Shared.Common;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -79,5 +80,6 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapAccountEndpoints();
+app.MapFileProxyEndpoints();
 
 app.Run();

@@ -9,4 +9,5 @@ public sealed record EquipmentListItemDto(
     string StatusName,
     string LocationName,
     decimal? PurchaseValue,
-    string? Currency);
+    string? Currency,
+    int? CoverFileId);

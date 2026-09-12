@@ -1,4 +1,6 @@
 using eImovina.Api.Data;
+using eImovina.Api.Data.Entities;
+using eImovina.Api.Services;
 using eImovina.Shared.Common;
 using eImovina.Shared.Equipment;
 using Microsoft.AspNetCore.Authorization;
@@ -7,15 +9,29 @@ using Microsoft.EntityFrameworkCore;
 
 namespace eImovina.Api.Controllers;
 
+/// <summary>
+/// [FromForm]-bound multipart request for POST {id}/files - can't live in eImovina.Shared since
+/// IFormFile is an ASP.NET Core type, not a plain DTO type.
+/// </summary>
+public sealed class UploadEquipmentFileRequest
+{
+    public IFormFile File { get; set; } = null!;
+    public FileKind FileKind { get; set; }
+}
+
 [ApiController]
 [Route("api/equipment")]
 public class EquipmentController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IWebHostEnvironment _env;
+    private readonly ICurrentUser _currentUser;
 
-    public EquipmentController(AppDbContext db)
+    public EquipmentController(AppDbContext db, IWebHostEnvironment env, ICurrentUser currentUser)
     {
         _db = db;
+        _env = env;
+        _currentUser = currentUser;
     }
 
     [HttpGet]
@@ -77,7 +93,9 @@ public class EquipmentController : ControllerBase
         var items = await filtered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new EquipmentListItemDto(x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.SerialNumber, x.Equipment.Name, x.CategoryName, x.StatusName, x.LocationName, x.Equipment.PurchaseValue, x.Equipment.Currency))
+            .Select(x => new EquipmentListItemDto(
+                x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.SerialNumber, x.Equipment.Name, x.CategoryName, x.StatusName, x.LocationName, x.Equipment.PurchaseValue, x.Equipment.Currency,
+                _db.EquipmentFiles.Where(f => f.EquipmentId == x.Equipment.Id && f.IsCoverImage).Select(f => (int?)f.Id).FirstOrDefault()))
             .ToListAsync(ct);
 
         return Ok(new PagedResult<EquipmentListItemDto>(items, totalCount, page, pageSize));
@@ -253,4 +271,151 @@ public class EquipmentController : ControllerBase
             || await _db.InventoryItems.AnyAsync(ii => ii.EquipmentId == id, ct)
             || await _db.WriteOffRequests.AnyAsync(w => w.EquipmentId == id && pendingWriteOffStatusIds.Contains(w.WriteOffRequestStatusId), ct);
     }
+
+    // Read access is intentionally broader than the rest of this controller (plain [Authorize]
+    // instead of the InventoryManagement policy used everywhere else here): an employee who isn't
+    // an inventory manager is meant to be able to view files on equipment assigned to them
+    // (Section 10's /mine scope) without needing the management role. Since [Authorize] attributes
+    // on this controller are per-action (not class-level), a plain [Authorize] here genuinely
+    // means "any authenticated user" - it has no stricter class-level attribute to AND against.
+    [HttpGet("{id:int}/files")]
+    [Authorize]
+    public async Task<ActionResult<List<EquipmentFileDto>>> GetEquipmentFiles(int id, CancellationToken ct)
+    {
+        if (!await _db.Equipment.AnyAsync(e => e.Id == id, ct))
+        {
+            return NotFound();
+        }
+
+        var files = await _db.EquipmentFiles.AsNoTracking()
+            .Where(f => f.EquipmentId == id)
+            .OrderByDescending(f => f.IsCoverImage)
+            .ThenBy(f => f.UploadedAtUtc)
+            .ToListAsync(ct);
+
+        var dtos = files
+            .Select(f => new EquipmentFileDto(f.Id, f.EquipmentId, MapToSharedFileKind(f.FileKind), f.OriginalFileName, f.ContentType, f.SizeBytes, f.UploadedAtUtc, f.IsCoverImage))
+            .ToList();
+
+        return Ok(dtos);
+    }
+
+    [HttpPost("{id:int}/files")]
+    [Authorize(Policy = "InventoryManagement")]
+    [RequestSizeLimit(UploadLimits.MaxFileSizeBytes + 4096)]
+    public async Task<ActionResult<EquipmentFileDto>> UploadEquipmentFile(int id, [FromForm] UploadEquipmentFileRequest request, CancellationToken ct)
+    {
+        if (!await _db.Equipment.AnyAsync(e => e.Id == id, ct))
+        {
+            return NotFound();
+        }
+
+        if (request.File is null || request.File.Length == 0)
+        {
+            return Problem(detail: "Datoteka je obavezna.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (request.File.Length > UploadLimits.MaxFileSizeBytes)
+        {
+            return Problem(
+                detail: $"Datoteka je prevelika (najviše {UploadLimits.MaxFileSizeBytes / (1024 * 1024)} MB).",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Extension allow-list is authoritative, not the client-supplied IFormFile.ContentType
+        // header (spoofable) - the ContentType actually stored/served is the canonical value from
+        // this same mapping, never the raw header, so GET /api/files/{id} never round-trips
+        // garbage back out as this file's Content-Type.
+        var extension = Path.GetExtension(request.File.FileName).ToLowerInvariant();
+        var allowedExtensions = request.FileKind == FileKind.Image ? UploadLimits.AllowedImageExtensions : UploadLimits.AllowedDocumentExtensions;
+        if (!allowedExtensions.TryGetValue(extension, out var canonicalContentType))
+        {
+            return Problem(
+                detail: request.FileKind == FileKind.Image
+                    ? "Za sliku su dopušteni formati: PNG, JPG, WEBP."
+                    : "Za dokument je dopušten samo PDF format.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Flat storage, no per-equipment subfolders - StoredFileName and RelativePath are always
+        // the same value; see UploadPaths for the one place that convention is spelled out.
+        var storedFileName = $"{Guid.NewGuid()}{extension}";
+        var uploadsRoot = UploadPaths.Root(_env);
+        Directory.CreateDirectory(uploadsRoot);
+        var fullPath = UploadPaths.FullPath(_env, storedFileName);
+
+        await using (var stream = System.IO.File.Create(fullPath))
+        {
+            await request.File.CopyToAsync(stream, ct);
+        }
+
+        var entity = new EquipmentFile
+        {
+            EquipmentId = id,
+            FileKind = MapToEntityFileKind(request.FileKind),
+            OriginalFileName = request.File.FileName,
+            StoredFileName = storedFileName,
+            RelativePath = storedFileName,
+            ContentType = canonicalContentType,
+            SizeBytes = request.File.Length,
+            UploadedAtUtc = DateTime.UtcNow,
+            UploadedByUserId = _currentUser.UserId,
+            IsCoverImage = false,
+        };
+
+        _db.EquipmentFiles.Add(entity);
+        await _db.SaveChangesAsync(ct);
+
+        var dto = new EquipmentFileDto(entity.Id, entity.EquipmentId, request.FileKind, entity.OriginalFileName, entity.ContentType, entity.SizeBytes, entity.UploadedAtUtc, entity.IsCoverImage);
+        return CreatedAtAction(nameof(GetEquipmentFiles), new { id }, dto);
+    }
+
+    [HttpPost("{id:int}/files/{fileId:int}/set-cover")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<IActionResult> SetCoverImage(int id, int fileId, CancellationToken ct)
+    {
+        var file = await _db.EquipmentFiles.SingleOrDefaultAsync(f => f.Id == fileId && f.EquipmentId == id, ct);
+        if (file is null)
+        {
+            return NotFound();
+        }
+
+        if (file.FileKind != EquipmentFileKind.Image)
+        {
+            return Problem(detail: "Samo slika može biti postavljena kao naslovna.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var otherCovers = await _db.EquipmentFiles
+            .Where(f => f.EquipmentId == id && f.IsCoverImage && f.Id != fileId)
+            .ToListAsync(ct);
+        foreach (var cover in otherCovers)
+        {
+            cover.IsCoverImage = false;
+        }
+
+        file.IsCoverImage = true;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // FileKind (Shared, DTO-facing) <-> EquipmentFileKind (entity-facing) are mapped by name, not
+    // by casting the underlying int - the two enums have identical members today, but a raw cast
+    // would silently corrupt data with no compiler warning if either one is ever reordered.
+    private static FileKind MapToSharedFileKind(EquipmentFileKind kind) => kind switch
+    {
+        EquipmentFileKind.Image => FileKind.Image,
+        EquipmentFileKind.Invoice => FileKind.Invoice,
+        EquipmentFileKind.Warranty => FileKind.Warranty,
+        EquipmentFileKind.ServiceDoc => FileKind.ServiceDoc,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    private static EquipmentFileKind MapToEntityFileKind(FileKind kind) => kind switch
+    {
+        FileKind.Image => EquipmentFileKind.Image,
+        FileKind.Invoice => EquipmentFileKind.Invoice,
+        FileKind.Warranty => EquipmentFileKind.Warranty,
+        FileKind.ServiceDoc => EquipmentFileKind.ServiceDoc,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 }

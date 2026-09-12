@@ -45,13 +45,85 @@ else if (_equipment is not null)
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.subtitle1" GutterBottom="true">Datoteke</MudText>
-                @if (_equipment.FileCount > 0)
+                @if (_filesLoading)
                 {
-                    <MudText>Ukupno datoteka: @_equipment.FileCount</MudText>
+                    <LoadingPanel Message="Učitavanje datoteka…" />
+                }
+                else if (_filesError is not null)
+                {
+                    <ErrorAlert Message="@_filesError" OnRetry="LoadFilesAsync" />
                 }
                 else
                 {
-                    <EmptyState Message="Još nema datoteka." />
+                    var images = _files.Where(f => f.FileKind == FileKind.Image).ToList();
+                    var documents = _files.Where(f => f.FileKind != FileKind.Image).ToList();
+
+                    if (images.Count == 0 && documents.Count == 0)
+                    {
+                        <EmptyState Message="Još nema datoteka." />
+                    }
+
+                    if (images.Count > 0)
+                    {
+                        <MudGrid Spacing="1" Class="mb-2">
+                            @foreach (var file in images)
+                            {
+                                <MudItem xs="6" sm="4">
+                                    <MudPaper Class="pa-2" Outlined="true">
+                                        <MudImage Src="@($"/files/{file.Id}")" Alt="@file.OriginalFileName" ObjectFit="ObjectFit.Cover" Height="100" Fluid="true" Class="rounded" />
+                                        @if (file.IsCoverImage)
+                                        {
+                                            <MudChip T="string" Color="Color.Primary" Size="Size.Small" Class="mt-1">Naslovna</MudChip>
+                                        }
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-1">
+                                            @if (!file.IsCoverImage)
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetCoverAsync(file))"
+                                                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Postavi kao naslovnu {file.OriginalFileName}" })" />
+                                            }
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteFileAsync(file))"
+                                                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Izbriši {file.OriginalFileName}" })" />
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    }
+
+                    foreach (var doc in documents)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="py-1">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudChip T="string" Size="Size.Small">@KindLabel(doc.FileKind)</MudChip>
+                                <a href="@($"/files/{doc.Id}")" target="_blank">@doc.OriginalFileName</a>
+                            </MudStack>
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteFileAsync(doc))"
+                                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Izbriši {doc.OriginalFileName}" })" />
+                        </MudStack>
+                    }
+
+                    if (_uploadError is not null)
+                    {
+                        <ErrorAlert Message="@_uploadError" Class="mt-2" />
+                    }
+
+                    <MudSelect T="FileKind" Label="Vrsta datoteke" @bind-Value="_uploadKind" Class="mt-3" Dense="true">
+                        <MudSelectItem T="FileKind" Value="FileKind.Image">Slika</MudSelectItem>
+                        <MudSelectItem T="FileKind" Value="FileKind.Invoice">Račun</MudSelectItem>
+                        <MudSelectItem T="FileKind" Value="FileKind.Warranty">Jamstveni list</MudSelectItem>
+                        <MudSelectItem T="FileKind" Value="FileKind.ServiceDoc">Servisna dokumentacija</MudSelectItem>
+                    </MudSelect>
+                    <MudFileUpload T="IBrowserFile" OnFilesChanged="OnFileSelectedAsync" Accept="@AcceptFor(_uploadKind)" MaxFileSize="UploadLimits.MaxFileSizeBytes" Class="mt-2">
+                        <CustomContent Context="fileUploadContext">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload"
+                                       OnClick="@fileUploadContext.OpenFilePickerAsync" Disabled="_uploading">
+                                Dodaj datoteku
+                            </MudButton>
+                        </CustomContent>
+                    </MudFileUpload>
+                    <MudText Typo="Typo.caption" Class="d-block mt-1">
+                        Slike: PNG/JPG/WEBP, dokumenti: PDF, najviše @(UploadLimits.MaxFileSizeBytes / (1024 * 1024)) MB.
+                    </MudText>
                 }
             </MudPaper>
         </MudItem>
@@ -93,7 +165,17 @@ else if (_equipment is not null)
     private string? _loadError;
     private EquipmentDetailDto? _equipment;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    private List<EquipmentFileDto> _files = new();
+    private bool _filesLoading = true;
+    private string? _filesError;
+    private string? _uploadError;
+    private bool _uploading;
+    private FileKind _uploadKind = FileKind.Image;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadAsync(), LoadFilesAsync());
+    }
 
     private async Task LoadAsync()
     {
@@ -113,6 +195,113 @@ else if (_equipment is not null)
             _loadError = result.Error!.Message;
         }
     }
+
+    private async Task LoadFilesAsync()
+    {
+        _filesLoading = true;
+        _filesError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<EquipmentFileDto>>($"api/equipment/{Id}/files");
+        _filesLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _files = result.Value!;
+        }
+        else
+        {
+            _filesError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        _uploading = true;
+        StateHasChanged();
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: UploadLimits.MaxFileSizeBytes);
+            using var streamContent = new StreamContent(stream);
+            content.Add(streamContent, "File", e.File.Name);
+            content.Add(new StringContent(_uploadKind.ToString()), "FileKind");
+
+            var result = await Api.PostFileAsync<EquipmentFileDto>($"api/equipment/{Id}/files", content);
+            if (result.IsSuccess)
+            {
+                Snackbar.Add("Datoteka je dodana.", Severity.Success);
+                await LoadFilesAsync();
+            }
+            else
+            {
+                _uploadError = result.Error!.Message;
+            }
+        }
+        catch (IOException)
+        {
+            _uploadError = $"Datoteka je prevelika (najviše {UploadLimits.MaxFileSizeBytes / (1024 * 1024)} MB).";
+        }
+        finally
+        {
+            _uploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetCoverAsync(EquipmentFileDto file)
+    {
+        var result = await Api.PostAsync($"api/equipment/{Id}/files/{file.Id}/set-cover");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Naslovna slika je postavljena.", Severity.Success);
+            await LoadFilesAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task DeleteFileAsync(EquipmentFileDto file)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Izbrisati datoteku?",
+            $"Datoteka „{file.OriginalFileName}” bit će trajno izbrisana.",
+            "Izbriši",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.DeleteAsync($"api/files/{file.Id}");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Datoteka je izbrisana.", Severity.Success);
+            await LoadFilesAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private static string AcceptFor(FileKind kind) => kind == FileKind.Image
+        ? string.Join(",", UploadLimits.AllowedImageExtensions.Keys)
+        : string.Join(",", UploadLimits.AllowedDocumentExtensions.Keys);
+
+    private static string KindLabel(FileKind kind) => kind switch
+    {
+        FileKind.Image => "Slika",
+        FileKind.Invoice => "Račun",
+        FileKind.Warranty => "Jamstveni list",
+        FileKind.ServiceDoc => "Servisna dokumentacija",
+        _ => kind.ToString(),
+    };
 
     private async Task ArchiveAsync()
     {
