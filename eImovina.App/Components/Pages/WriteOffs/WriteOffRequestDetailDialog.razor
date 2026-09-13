@@ -1,0 +1,173 @@
+@using eImovina.Shared.WriteOffRequests
+@using eImovina.Shared.Common
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else if (_loadError is not null)
+        {
+            <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
+        }
+        else
+        {
+            <MudStack Spacing="2">
+                <MudText><b>Oprema:</b> @_detail.EquipmentInventoryNumber — @_detail.EquipmentName</MudText>
+                <MudText><b>Razlog:</b> @_detail.Reason</MudText>
+                <MudText><b>Status:</b> @_detail.StatusName</MudText>
+                <MudText><b>Podnositelj:</b> @_detail.SubmittedByName, @_detail.CreatedAtUtc.ToString("dd.MM.yyyy. HH:mm")</MudText>
+                @if (_detail.DecisionAtUtc is not null)
+                {
+                    <MudText><b>Odluka:</b> @_detail.DecisionByName, @_detail.DecisionAtUtc.Value.ToString("dd.MM.yyyy. HH:mm")</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_detail.DecisionNote))
+                    {
+                        <MudText><b>Napomena:</b> @_detail.DecisionNote</MudText>
+                    }
+                }
+                @if (_detail.ExecutedAtUtc is not null)
+                {
+                    <MudText><b>Otpis proveo:</b> @_detail.ExecutedByName, @_detail.ExecutedAtUtc.Value.ToString("dd.MM.yyyy. HH:mm")</MudText>
+                }
+
+                @if (_detail.WriteOffRequestStatusId is 1 or 2)
+                {
+                    <MudDivider Class="my-2" />
+                    <MudSelect T="int" Label="Odluka" @bind-Value="_selectedDecisionStatusId" Variant="Variant.Outlined">
+                        <MudSelectItem T="int" Value="3">Odobreno</MudSelectItem>
+                        <MudSelectItem T="int" Value="4">Odbijeno</MudSelectItem>
+                    </MudSelect>
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_decisionNote" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                }
+                else if (_detail.WriteOffRequestStatusId == 3)
+                {
+                    <MudDivider Class="my-2" />
+                    <MudAlert Severity="Severity.Warning">
+                        Provođenjem otpisa oprema će trajno prijeći u status Otpisano i neće se moći ponovno zadužiti niti ponovno poslati na otpis.
+                    </MudAlert>
+                }
+            </MudStack>
+        }
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zatvori</MudButton>
+        @if (_writeOff?.WriteOffRequestStatusId is 1 or 2)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="DecideAsync" Disabled="@(_saving || _loading)">Potvrdi odluku</MudButton>
+        }
+        else if (_writeOff?.WriteOffRequestStatusId == 3)
+        {
+            <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ExecuteAsync" Disabled="@(_saving || _loading)">Provedi otpis</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int Id { get; set; }
+
+    private WriteOffRequestDetailDto? _writeOff;
+    private WriteOffRequestDetailDto _detail => _writeOff!;
+    private int _selectedDecisionStatusId = 3;
+    private string? _decisionNote;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _loadError;
+    private string? _errorMessage;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<WriteOffRequestDetailDto>($"api/writeoffrequests/{Id}");
+        _loading = false;
+
+        if (result.IsSuccess)
+        {
+            _writeOff = result.Value;
+        }
+        else
+        {
+            _loadError = result.Error!.Message;
+        }
+    }
+
+    private async Task DecideAsync()
+    {
+        if (_selectedDecisionStatusId == 4)
+        {
+            var confirmed = await DialogService.ConfirmAsync(
+                "Odbiti zahtjev za otpis?",
+                $"Zahtjev za otpis opreme „{_writeOff!.EquipmentInventoryNumber} — {_writeOff.EquipmentName}” bit će odbijen. Ova radnja se ne može poništiti.",
+                "Odbij",
+                Color.Error);
+            if (!confirmed)
+            {
+                return;
+            }
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<DecideWriteOffRequestDto, WriteOffRequestDetailDto>(
+            $"api/writeoffrequests/{Id}/decide",
+            new DecideWriteOffRequestDto(_selectedDecisionStatusId, _decisionNote));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Odluka je zabilježena.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private async Task ExecuteAsync()
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Provesti otpis?",
+            $"Oprema „{_writeOff!.EquipmentInventoryNumber} — {_writeOff.EquipmentName}” bit će trajno postavljena u status Otpisano. Neće se moći ponovno zadužiti niti ponovno poslati na otpis. Ova radnja je nepovratna.",
+            "Provedi",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<WriteOffRequestDetailDto>($"api/writeoffrequests/{Id}/execute");
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Otpis je proveden.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

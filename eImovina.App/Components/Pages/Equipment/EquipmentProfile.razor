@@ -1,8 +1,10 @@
 @page "/equipment/{Id:int}"
 @attribute [Authorize(Policy = "InventoryManagement")]
 @using eImovina.App.Components.Pages.Assignments
+@using eImovina.App.Components.Pages.WriteOffs
 @using eImovina.Shared.Assignments
 @using eImovina.Shared.Equipment
+@using eImovina.Shared.WriteOffRequests
 @inject ApiClient Api
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -41,6 +43,10 @@ else if (_equipment is not null)
             else
             {
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Archive" OnClick="ArchiveAsync">Arhiviraj</MudButton>
+            }
+            @if (!_equipment.IsArchived && _equipment.EquipmentStatusId != 5 && !_hasOpenWriteOff)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="OpenCreateWriteOffDialogAsync">Pokreni postupak otpisa</MudButton>
             }
         </MudStack>
     </MudStack>
@@ -183,13 +189,31 @@ else if (_equipment is not null)
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.subtitle1" GutterBottom="true">Zahtjevi za otpis</MudText>
-                @if (_equipment.WriteOffRequestCount > 0)
+                @if (_writeOffsLoading)
                 {
-                    <MudText>Ukupno zahtjeva: @_equipment.WriteOffRequestCount</MudText>
+                    <LoadingPanel Message="Učitavanje zahtjeva za otpis…" />
+                }
+                else if (_writeOffsError is not null)
+                {
+                    <ErrorAlert Message="@_writeOffsError" OnRetry="LoadWriteOffsAsync" />
+                }
+                else if (_writeOffs.Count == 0)
+                {
+                    <EmptyState Message="Još nema zahtjeva za otpis." />
                 }
                 else
                 {
-                    <EmptyState Message="Još nema zahtjeva za otpis." />
+                    @foreach (var writeOff in _writeOffs)
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-1">
+                            <MudText Typo="Typo.body2">
+                                @writeOff.StatusName · @writeOff.CreatedAtUtc.ToString("dd.MM.yyyy.")
+                                <br />@writeOff.Reason
+                            </MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenWriteOffDetailAsync(writeOff))"
+                                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva za otpis od {writeOff.CreatedAtUtc:dd.MM.yyyy.}" })" />
+                        </MudStack>
+                    }
                 }
             </MudPaper>
         </MudItem>
@@ -216,9 +240,14 @@ else if (_equipment is not null)
     private bool _historyLoading = true;
     private string? _historyError;
 
+    private List<WriteOffRequestListDto> _writeOffs = new();
+    private bool _writeOffsLoading = true;
+    private string? _writeOffsError;
+    private bool _hasOpenWriteOff => _writeOffs.Any(w => w.WriteOffRequestStatusId is 1 or 2 or 3);
+
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadAsync(), LoadFilesAsync(), LoadHistoryAsync());
+        await Task.WhenAll(LoadAsync(), LoadFilesAsync(), LoadHistoryAsync(), LoadWriteOffsAsync());
     }
 
     private async Task LoadAsync()
@@ -280,6 +309,26 @@ else if (_equipment is not null)
         StateHasChanged();
     }
 
+    private async Task LoadWriteOffsAsync()
+    {
+        _writeOffsLoading = true;
+        _writeOffsError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<PagedResult<WriteOffRequestListDto>>($"api/writeoffrequests?EquipmentId={Id}&PageSize=100");
+        _writeOffsLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _writeOffs = result.Value!.Items.ToList();
+        }
+        else
+        {
+            _writeOffsError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
     private static readonly DialogOptions AssignmentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 
     private async Task OpenAssignDialogAsync()
@@ -291,6 +340,29 @@ else if (_equipment is not null)
         {
             Snackbar.Add("Oprema je zadužena.", Severity.Success);
             await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+        }
+    }
+
+    private async Task OpenCreateWriteOffDialogAsync()
+    {
+        var parameters = new DialogParameters<CreateWriteOffRequestDialog> { { x => x.EquipmentId, Id } };
+        var dialogReference = await DialogService.ShowAsync<CreateWriteOffRequestDialog>("Novi zahtjev za otpis", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Zahtjev za otpis je poslan.", Severity.Success);
+            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync());
+        }
+    }
+
+    private async Task OpenWriteOffDetailAsync(WriteOffRequestListDto row)
+    {
+        var parameters = new DialogParameters<WriteOffRequestDetailDialog> { { x => x.Id, row.Id } };
+        var dialogReference = await DialogService.ShowAsync<WriteOffRequestDetailDialog>("Zahtjev za otpis", parameters, AssignmentDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync());
         }
     }
 

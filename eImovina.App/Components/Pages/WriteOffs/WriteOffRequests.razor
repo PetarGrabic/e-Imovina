@@ -1,0 +1,161 @@
+@page "/write-off-requests"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.WriteOffRequests
+@using eImovina.Shared.Common
+@inject ApiClient Api
+@inject IDialogService DialogService
+
+<PageTitle>Zahtjevi za otpis — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Zahtjevi za otpis</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="WriteOffRequestListDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 220px;" />
+        <MudSelect T="int?" Label="Status" Value="_statusId" ValueChanged="OnStatusFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi statusi</MudSelectItem>
+            @foreach (var status in _statuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+            Novi zahtjev za otpis
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="equipment">Oprema</MudTableSortLabel></MudTh>
+        <MudTh>Razlog</MudTh>
+        <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
+        <MudTh>Podnositelj</MudTh>
+        <MudTh>Poslano</MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Oprema">@context.EquipmentInventoryNumber — @context.EquipmentName</MudTd>
+        <MudTd DataLabel="Razlog">@context.Reason</MudTd>
+        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Podnositelj">@context.SubmittedByName</MudTd>
+        <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva za otpis {context.EquipmentInventoryNumber}" })" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema zahtjeva za otpis za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje zahtjeva za otpis…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<WriteOffRequestListDto> _table = null!;
+    private List<LookupDto> _statuses = new();
+    private string? _searchText;
+    private int? _statusId;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/writeoffrequeststatuses");
+        if (result.IsSuccess)
+        {
+            _statuses = result.Value!;
+        }
+    }
+
+    private async Task<TableData<WriteOffRequestListDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+        if (_statusId is int statusId)
+        {
+            queryParams["WriteOffRequestStatusId"] = statusId.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/writeoffrequests", queryParams);
+        var result = await Api.GetAsync<PagedResult<WriteOffRequestListDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<WriteOffRequestListDto> { TotalItems = 0, Items = Array.Empty<WriteOffRequestListDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<WriteOffRequestListDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private Task OnStatusFilterChangedAsync(int? value)
+    {
+        _statusId = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        _statusId = null;
+        await _table.ReloadServerData();
+    }
+
+    private static readonly DialogOptions WriteOffDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<CreateWriteOffRequestDialog>("Novi zahtjev za otpis", WriteOffDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenDetailAsync(WriteOffRequestListDto row)
+    {
+        var parameters = new DialogParameters<WriteOffRequestDetailDialog> { { x => x.Id, row.Id } };
+        var dialogReference = await DialogService.ShowAsync<WriteOffRequestDetailDialog>("Zahtjev za otpis", parameters, WriteOffDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+}

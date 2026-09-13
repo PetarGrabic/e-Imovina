@@ -243,6 +243,24 @@ public class EquipmentController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict);
         }
 
+        // EquipmentStatusId == 5 (Otpisano) is reachable/reversible only through the write-off
+        // execute action (WriteOffRequestsController.Execute) - the general edit form must not be
+        // able to set or clear it, or the write-off decision/execution audit trail becomes
+        // meaningless (an equipment item could silently leave/enter Otpisano with no record of
+        // who approved it or why).
+        if (equipment.EquipmentStatusId == 5 && request.EquipmentStatusId != 5)
+        {
+            return Problem(
+                detail: "Oprema je otpisana — status se ne može mijenjati kroz uređivanje.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+        if (equipment.EquipmentStatusId != 5 && request.EquipmentStatusId == 5)
+        {
+            return Problem(
+                detail: "Status 'Otpisano' se ne može postaviti ručno — potrebno je provesti postupak otpisa.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
         equipment.InventoryNumber = request.InventoryNumber;
         equipment.SerialNumber = request.SerialNumber;
         equipment.Name = request.Name;
