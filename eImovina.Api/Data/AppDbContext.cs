@@ -23,6 +23,8 @@ public class AppDbContext : DbContext
     public DbSet<Equipment> Equipment => Set<Equipment>();
 
     public DbSet<EquipmentAssignment> EquipmentAssignments => Set<EquipmentAssignment>();
+    public DbSet<EquipmentLocationHistory> EquipmentLocationHistories => Set<EquipmentLocationHistory>();
+    public DbSet<EquipmentStatusHistory> EquipmentStatusHistories => Set<EquipmentStatusHistory>();
     public DbSet<Inventory> Inventories => Set<Inventory>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EquipmentRequest> EquipmentRequests => Set<EquipmentRequest>();

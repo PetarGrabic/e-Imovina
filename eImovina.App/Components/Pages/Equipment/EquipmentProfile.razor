@@ -217,7 +217,116 @@ else if (_equipment is not null)
                 }
             </MudPaper>
         </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">QR kod</MudText>
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudImage Src="@($"/equipment/{Id}/qrcode")" Alt="@($"QR kod za {_equipment.InventoryNumber}")" Width="160" Height="160" />
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" Href="@($"/equipment/{Id}/qrcode")" Target="_blank">
+                        Ispiši naljepnicu
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Povijest lokacije</MudText>
+                @if (_locationHistoryLoading)
+                {
+                    <LoadingPanel Message="Učitavanje povijesti lokacije…" />
+                }
+                else if (_locationHistoryError is not null)
+                {
+                    <ErrorAlert Message="@_locationHistoryError" OnRetry="LoadLocationHistoryAsync" />
+                }
+                else if (_locationHistory.Count == 0)
+                {
+                    <EmptyState Message="Još nema promjena lokacije." />
+                }
+                else
+                {
+                    foreach (var entry in _locationHistory)
+                    {
+                        <MudStack Spacing="0" Class="py-1">
+                            <MudText Typo="Typo.body2">
+                                @(entry.FromLocationName ?? "—") → <b>@entry.ToLocationName</b>
+                            </MudText>
+                            <MudText Typo="Typo.caption">
+                                @entry.ChangedAtUtc.ToString("dd.MM.yyyy. HH:mm") · promijenio: @entry.ChangedByName
+                            </MudText>
+                        </MudStack>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Povijest statusa</MudText>
+                @if (_statusHistoryLoading)
+                {
+                    <LoadingPanel Message="Učitavanje povijesti statusa…" />
+                }
+                else if (_statusHistoryError is not null)
+                {
+                    <ErrorAlert Message="@_statusHistoryError" OnRetry="LoadStatusHistoryAsync" />
+                }
+                else if (_statusHistory.Count == 0)
+                {
+                    <EmptyState Message="Još nema promjena statusa." />
+                }
+                else
+                {
+                    foreach (var entry in _statusHistory)
+                    {
+                        <MudStack Spacing="0" Class="py-1">
+                            <MudText Typo="Typo.body2">
+                                @(entry.FromStatusName ?? "—") → <b>@entry.ToStatusName</b>
+                            </MudText>
+                            <MudText Typo="Typo.caption">
+                                @entry.ChangedAtUtc.ToString("dd.MM.yyyy. HH:mm") · promijenio: @entry.ChangedByName
+                            </MudText>
+                        </MudStack>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
     </MudGrid>
+
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.subtitle1" GutterBottom="true">Vremenska crta</MudText>
+        @if (_timelineLoading)
+        {
+            <LoadingPanel Message="Učitavanje vremenske crte…" />
+        }
+        else if (_timelineError is not null)
+        {
+            <ErrorAlert Message="@_timelineError" OnRetry="LoadTimelineAsync" />
+        }
+        else if (_timeline.Count == 0)
+        {
+            <EmptyState Message="Još nema evidentiranih promjena." />
+        }
+        else
+        {
+            <MudTimeline TimelinePosition="TimelinePosition.Start">
+                @foreach (var entry in _timeline)
+                {
+                    <MudTimelineItem Icon="@TimelineIcon(entry.EventType)" Color="@TimelineColor(entry.EventType)" Size="Size.Small">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            @if (entry.RelatedFileId is int fileId)
+                            {
+                                <MudImage Src="@($"/files/{fileId}")" Alt="@entry.Description" ObjectFit="ObjectFit.Cover" Width="40" Height="40" Class="rounded" />
+                            }
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@entry.Description</MudText>
+                                <MudText Typo="Typo.caption">@entry.OccurredAtUtc.ToLocalTime().ToString("dd.MM.yyyy. HH:mm")</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+    </MudPaper>
 
     <MudButton Href="/equipment" Variant="Variant.Text" Class="mt-4">Natrag na popis</MudButton>
 }
@@ -245,9 +354,23 @@ else if (_equipment is not null)
     private string? _writeOffsError;
     private bool _hasOpenWriteOff => _writeOffs.Any(w => w.WriteOffRequestStatusId is 1 or 2 or 3);
 
+    private List<EquipmentLocationHistoryDto> _locationHistory = new();
+    private bool _locationHistoryLoading = true;
+    private string? _locationHistoryError;
+
+    private List<EquipmentStatusHistoryDto> _statusHistory = new();
+    private bool _statusHistoryLoading = true;
+    private string? _statusHistoryError;
+
+    private List<EquipmentTimelineEntryDto> _timeline = new();
+    private bool _timelineLoading = true;
+    private string? _timelineError;
+
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadAsync(), LoadFilesAsync(), LoadHistoryAsync(), LoadWriteOffsAsync());
+        await Task.WhenAll(
+            LoadAsync(), LoadFilesAsync(), LoadHistoryAsync(), LoadWriteOffsAsync(),
+            LoadLocationHistoryAsync(), LoadStatusHistoryAsync(), LoadTimelineAsync());
     }
 
     private async Task LoadAsync()
@@ -329,6 +452,86 @@ else if (_equipment is not null)
         StateHasChanged();
     }
 
+    private async Task LoadLocationHistoryAsync()
+    {
+        _locationHistoryLoading = true;
+        _locationHistoryError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<EquipmentLocationHistoryDto>>($"api/equipment/{Id}/location-history");
+        _locationHistoryLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _locationHistory = result.Value!;
+        }
+        else
+        {
+            _locationHistoryError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadStatusHistoryAsync()
+    {
+        _statusHistoryLoading = true;
+        _statusHistoryError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<EquipmentStatusHistoryDto>>($"api/equipment/{Id}/status-history");
+        _statusHistoryLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _statusHistory = result.Value!;
+        }
+        else
+        {
+            _statusHistoryError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadTimelineAsync()
+    {
+        _timelineLoading = true;
+        _timelineError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<EquipmentTimelineEntryDto>>($"api/equipment/{Id}/timeline");
+        _timelineLoading = false;
+
+        if (result.IsSuccess)
+        {
+            _timeline = result.Value!;
+        }
+        else
+        {
+            _timelineError = result.Error!.Message;
+        }
+        StateHasChanged();
+    }
+
+    private static string TimelineIcon(string eventType) => eventType switch
+    {
+        "Assignment" => Icons.Material.Filled.AssignmentInd,
+        "LocationChange" => Icons.Material.Filled.LocationOn,
+        "StatusChange" => Icons.Material.Filled.SyncAlt,
+        "WriteOff" => Icons.Material.Filled.DeleteSweep,
+        "File" => Icons.Material.Filled.AttachFile,
+        _ => Icons.Material.Filled.Event,
+    };
+
+    private static Color TimelineColor(string eventType) => eventType switch
+    {
+        "Assignment" => Color.Primary,
+        "LocationChange" => Color.Info,
+        "StatusChange" => Color.Warning,
+        "WriteOff" => Color.Error,
+        "File" => Color.Secondary,
+        _ => Color.Default,
+    };
+
     private static readonly DialogOptions AssignmentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 
     private async Task OpenAssignDialogAsync()
@@ -339,7 +542,7 @@ else if (_equipment is not null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Oprema je zadužena.", Severity.Success);
-            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync(), LoadStatusHistoryAsync(), LoadTimelineAsync());
         }
     }
 
@@ -351,7 +554,7 @@ else if (_equipment is not null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Zahtjev za otpis je poslan.", Severity.Success);
-            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync());
+            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync(), LoadTimelineAsync());
         }
     }
 
@@ -362,7 +565,7 @@ else if (_equipment is not null)
         var result = await dialogReference.Result;
         if (result is { Canceled: false })
         {
-            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync());
+            await Task.WhenAll(LoadAsync(), LoadWriteOffsAsync(), LoadTimelineAsync());
         }
     }
 
@@ -378,7 +581,7 @@ else if (_equipment is not null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Oprema je premještena.", Severity.Success);
-            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync(), LoadTimelineAsync());
         }
     }
 
@@ -394,7 +597,7 @@ else if (_equipment is not null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Lokacija je promijenjena.", Severity.Success);
-            await LoadAsync();
+            await Task.WhenAll(LoadAsync(), LoadLocationHistoryAsync(), LoadTimelineAsync());
         }
     }
 
@@ -421,7 +624,7 @@ else if (_equipment is not null)
         if (result.IsSuccess)
         {
             Snackbar.Add("Oprema je vraćena.", Severity.Success);
-            await Task.WhenAll(LoadAsync(), LoadHistoryAsync());
+            await Task.WhenAll(LoadAsync(), LoadHistoryAsync(), LoadStatusHistoryAsync(), LoadTimelineAsync());
         }
         else
         {
@@ -447,7 +650,7 @@ else if (_equipment is not null)
             if (result.IsSuccess)
             {
                 Snackbar.Add("Datoteka je dodana.", Severity.Success);
-                await LoadFilesAsync();
+                await Task.WhenAll(LoadFilesAsync(), LoadTimelineAsync());
             }
             else
             {
@@ -495,7 +698,7 @@ else if (_equipment is not null)
         if (result.IsSuccess)
         {
             Snackbar.Add("Datoteka je izbrisana.", Severity.Success);
-            await LoadFilesAsync();
+            await Task.WhenAll(LoadFilesAsync(), LoadTimelineAsync());
         }
         else
         {

@@ -51,6 +51,7 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddScoped<ITokenAccessor, TokenAccessor>();
 builder.Services.AddTransient<AuthHeaderHandler>();
+builder.Services.AddScoped<QrScannerInterop>();
 
 // Typed HttpClient wrapped by ApiClient. AuthHeaderHandler attaches the signed-in user's bearer
 // token to every request made through this client.
@@ -85,5 +86,6 @@ app.MapRazorComponents<App>()
 
 app.MapAccountEndpoints();
 app.MapFileProxyEndpoints();
+app.MapQrCodeProxyEndpoints();
 
 app.Run();

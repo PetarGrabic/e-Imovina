@@ -397,7 +397,11 @@ public class InventoriesController : ControllerBase
             return Problem(detail: "Inventura se može otvoriti samo iz statusa Nacrt.", statusCode: StatusCodes.Status409Conflict);
         }
 
-        // Equipment "currently expected" at this location - not archived, current location matches.
+        // Equipment "currently expected" at this location - not archived, not written off, current
+        // location matches. Otpisano (5) equipment is excluded: it's already been formally
+        // dispositioned through the write-off flow, so re-flagging it as "missing"/"damaged" in a
+        // fresh inventory is meaningless noise, not a real physical-presence check (confirmed with
+        // the user).
         // Deliberately does NOT exclude equipment already captured by another still-open inventory
         // at the same location: no one-inventory-per-location constraint is required by the
         // guidelines, and adding one here would be speculative scope beyond what's asked.
@@ -405,7 +409,7 @@ public class InventoriesController : ControllerBase
             from e in _db.Equipment.AsNoTracking()
             join c in _db.EquipmentCategories.AsNoTracking() on e.EquipmentCategoryId equals c.Id
             join s in _db.EquipmentStatuses.AsNoTracking() on e.EquipmentStatusId equals s.Id
-            where e.CurrentLocationId == inventory.LocationId && !e.IsArchived
+            where e.CurrentLocationId == inventory.LocationId && !e.IsArchived && e.EquipmentStatusId != 5
             select new { e.Id, e.InventoryNumber, e.Name, CategoryName = c.Name, StatusName = s.Name }
         ).ToListAsync(ct);
 

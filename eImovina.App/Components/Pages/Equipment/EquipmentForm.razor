@@ -70,6 +70,7 @@ else
 
 @code {
     [Parameter] public EquipmentDetailDto? Existing { get; set; }
+    [Parameter] public string? InitialInventoryNumber { get; set; }
     [Parameter] public EventCallback<int> OnSaved { get; set; }
 
     private MudForm _form = null!;
@@ -97,6 +98,13 @@ else
             _model.Currency = Existing.Currency;
             _model.PurchaseDate = Existing.PurchaseDate?.ToDateTime(TimeOnly.MinValue);
             _model.Notes = Existing.Notes;
+        }
+        else if (!string.IsNullOrWhiteSpace(InitialInventoryNumber))
+        {
+            // Pre-fills the field when arriving from the QR scan page's "unknown code" prompt
+            // (ScanEquipment.razor) - the scanned code becomes a starting point the user can still
+            // edit, not a locked-in value.
+            _model.InventoryNumber = InitialInventoryNumber;
         }
 
         var categoriesTask = Api.GetAsync<List<LookupDto>>("api/lookups/equipmentcategories");

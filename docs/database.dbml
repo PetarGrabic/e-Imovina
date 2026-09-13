@@ -158,6 +158,36 @@ Table EquipmentAssignments {
   Note: 'Full assignment history - append-only, never truncated. AssignedByUserId = who opened it. ClosedByUserId (nullable) = who performed the return/transfer/cancel - a narrow, named field on this one table, not a generic audit log.'
 }
 
+Table EquipmentLocationHistories {
+  Id integer [pk, increment]
+  EquipmentId integer [not null]
+  FromLocationId integer [note: 'Null on the initial row created at equipment entry - there was no prior location.']
+  ToLocationId integer [not null]
+  ChangedAtUtc datetime [not null]
+  ChangedByUserId integer [not null]
+
+  indexes {
+    EquipmentId
+  }
+
+  Note: 'Bonus: append-only log of every CurrentLocationId change (initial entry, ChangeLocation, and the general edit form) - never truncated.'
+}
+
+Table EquipmentStatusHistories {
+  Id integer [pk, increment]
+  EquipmentId integer [not null]
+  FromStatusId integer [note: 'Null on the initial row created at equipment entry - there was no prior status.']
+  ToStatusId integer [not null]
+  ChangedAtUtc datetime [not null]
+  ChangedByUserId integer [not null]
+
+  indexes {
+    EquipmentId
+  }
+
+  Note: 'Bonus: append-only log of every EquipmentStatusId change (initial entry, assign/return, the general edit form, and write-off execution) - never truncated.'
+}
+
 Table Inventories {
   Id integer [pk, increment]
   LocationId integer [not null]
@@ -316,6 +346,16 @@ Ref: EquipmentAssignments.EmployeeId > Employees.Id [delete: restrict]
 Ref: EquipmentAssignments.AssignmentStatusId > AssignmentStatuses.Id [delete: restrict]
 Ref: EquipmentAssignments.AssignedByUserId > AppUsers.Id [delete: restrict]
 Ref: EquipmentAssignments.ClosedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: EquipmentLocationHistories.EquipmentId > Equipment.Id [delete: restrict]
+Ref: EquipmentLocationHistories.FromLocationId > Locations.Id [delete: restrict]
+Ref: EquipmentLocationHistories.ToLocationId > Locations.Id [delete: restrict]
+Ref: EquipmentLocationHistories.ChangedByUserId > AppUsers.Id [delete: restrict]
+
+Ref: EquipmentStatusHistories.EquipmentId > Equipment.Id [delete: restrict]
+Ref: EquipmentStatusHistories.FromStatusId > EquipmentStatuses.Id [delete: restrict]
+Ref: EquipmentStatusHistories.ToStatusId > EquipmentStatuses.Id [delete: restrict]
+Ref: EquipmentStatusHistories.ChangedByUserId > AppUsers.Id [delete: restrict]
 
 Ref: Inventories.LocationId > Locations.Id [delete: restrict]
 Ref: Inventories.ResponsibleEmployeeId > Employees.Id [delete: restrict]

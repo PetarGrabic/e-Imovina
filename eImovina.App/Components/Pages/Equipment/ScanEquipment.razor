@@ -1,0 +1,151 @@
+@page "/equipment/scan"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using eImovina.Shared.Equipment
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject QrScannerInterop Scanner
+@inject NavigationManager Navigation
+
+<PageTitle>Skeniraj opremu — e-Imovina</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" GutterBottom="true">Skeniraj opremu</MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.subtitle1">Kamera</MudText>
+
+            <video id="qr-scan-video" autoplay playsinline muted style="width:100%;border-radius:4px;background:#000;" hidden="@(!_cameraStarted)"></video>
+
+            @if (!_cameraStarted)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CameraAlt" FullWidth="true" OnClick="StartCameraAsync">
+                    Pokreni kameru
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Stop" FullWidth="true" OnClick="StopCameraAsync">
+                    Zaustavi kameru
+                </MudButton>
+            }
+            @if (_cameraError is not null)
+            {
+                <ErrorAlert Message="@_cameraError" />
+            }
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.subtitle1">Ili unesite inventurni broj ručno</MudText>
+            <MudTextField T="string" @bind-Value="_manualCode" Label="Inventurni broj" Variant="Variant.Outlined" Immediate="true"
+                          OnKeyDown="@(async e => { if (e.Key == "Enter") await LookupAsync(_manualCode); })" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_searching" OnClick="@(() => LookupAsync(_manualCode))">
+                Pretraži
+            </MudButton>
+
+            @if (_searching)
+            {
+                <LoadingPanel Message="Pretraga opreme…" />
+            }
+            else if (_searchError is not null)
+            {
+                <ErrorAlert Message="@_searchError" />
+            }
+            else if (_notFoundCode is not null)
+            {
+                <MudAlert Severity="Severity.Warning">
+                    <MudText>Oprema s inventurnim brojem „@_notFoundCode” ne postoji.</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-1" FullWidth="true"
+                               OnClick="@(() => Navigation.NavigateTo($"/equipment/create?inventoryNumber={Uri.EscapeDataString(_notFoundCode)}"))">
+                        Kreiraj novu opremu s ovim brojem
+                    </MudButton>
+                </MudAlert>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <MudButton Href="/equipment" Variant="Variant.Text" Class="mt-4">Natrag na popis</MudButton>
+</MudContainer>
+
+@code {
+    private bool _cameraStarted;
+    private string? _cameraError;
+    private string _manualCode = "";
+    private bool _searching;
+    private string? _searchError;
+    private string? _notFoundCode;
+    private DotNetObjectReference<ScanEquipment>? _dotNetRef;
+
+    private async Task StartCameraAsync()
+    {
+        _cameraError = null;
+        try
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await Scanner.StartAsync("qr-scan-video", _dotNetRef);
+            _cameraStarted = true;
+        }
+        catch (Exception)
+        {
+            _cameraError = "Kamera nije dostupna ili pristup nije dopušten. Koristite ručni unos.";
+        }
+    }
+
+    private async Task StopCameraAsync()
+    {
+        await Scanner.StopAsync();
+        _cameraStarted = false;
+    }
+
+    [JSInvokable]
+    public async Task OnCodeScanned(string code)
+    {
+        await StopCameraAsync();
+        _manualCode = code;
+        await InvokeAsync(StateHasChanged);
+        await LookupAsync(code);
+    }
+
+    private async Task LookupAsync(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        _searching = true;
+        _searchError = null;
+        _notFoundCode = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<PagedResult<EquipmentListItemDto>>($"api/equipment?text={Uri.EscapeDataString(code)}&PageSize=50");
+        _searching = false;
+
+        if (!result.IsSuccess)
+        {
+            _searchError = result.Error!.Message;
+            StateHasChanged();
+            return;
+        }
+
+        var match = result.Value!.Items.FirstOrDefault(e => string.Equals(e.InventoryNumber, code, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            Navigation.NavigateTo($"/equipment/{match.Id}");
+        }
+        else
+        {
+            _notFoundCode = code;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cameraStarted)
+        {
+            await Scanner.StopAsync();
+        }
+        _dotNetRef?.Dispose();
+    }
+}

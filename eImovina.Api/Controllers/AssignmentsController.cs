@@ -224,6 +224,7 @@ public class AssignmentsController : ControllerBase
             Note = request.Note,
         };
 
+        EquipmentHistoryRecorder.RecordStatusChange(_db, equipment.Id, equipment.EquipmentStatusId, 2, _currentUser.UserId, assignment.AssignedAtUtc);
         equipment.EquipmentStatusId = 2;
         _db.EquipmentAssignments.Add(assignment);
 
@@ -280,6 +281,7 @@ public class AssignmentsController : ControllerBase
         var equipment = await _db.Equipment.FindAsync([assignment.EquipmentId], ct);
         if (equipment is not null)
         {
+            EquipmentHistoryRecorder.RecordStatusChange(_db, equipment.Id, equipment.EquipmentStatusId, 1, _currentUser.UserId, returnedAtUtc);
             equipment.EquipmentStatusId = 1;
         }
 

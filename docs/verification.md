@@ -16,7 +16,8 @@ stvarnog pokretanja aplikacije. Sve je provjereno na aplikaciji koja se pokreće
 - **Demo korisnici za sve uloge** — 7 računa u `README.md`/`DemoDataSeeder.cs`, pokrivaju sve 4
   uloge (uklj. dva multi-role primjera: `LocationResponsible` + `Employee`).
 - **Konačni DBML baze** — `docs/database.dbml`, provjeren red po red protiv stvarnog EF Core
-  modela (19 entiteta, sve migracije) i usklađen s njim u potpunosti.
+  modela (21 entitet, sve migracije, uklj. bonus tablice `EquipmentLocationHistories`/
+  `EquipmentStatusHistories`) i usklađen s njim u potpunosti.
 - **Popis provjerenih workflowa i autorizacijskih scenarija** — ovaj dokument.
 
 ## Prije predaje obavezno provjerite
@@ -195,6 +196,33 @@ Uz to, anonimni i neovlašteni pozivi dosljedno vraćaju `401` ili `403` (vidi "
 Unauthorized i 403 Forbidden" iznad), a skrivanje akcije u Blazoru nigdje nije jedina zaštita —
 svaki zaštićeni endpoint ponavlja istu provjeru autorizacije na API strani, neovisno o tome što
 sučelje prikazuje.
+
+## Bonus dio
+
+Sva 4 bonus proširenja implementirana su i provjerena u pregledniku (Playwright CLI) nakon punog
+pokretanja iz prazne baze:
+
+- **Detaljna povijest lokacije i statusa opreme** — nove tablice `EquipmentLocationHistories`/
+  `EquipmentStatusHistories`, popunjavaju se pri svakoj promjeni (unos opreme, ručno uređivanje,
+  promjena lokacije, zaduženje/povrat, provedba otpisa). Provjereno: promjena lokacije i ciklus
+  zaduži/vrati na stvarnoj opremi ispravno stvaraju retke u oba panela na `EquipmentProfile`
+  stranici (`Povijest lokacije`, `Povijest statusa`), ispravnim redoslijedom i podacima
+  (prije → poslije, tko, kada).
+- **Analiza inventurnih odstupanja i vrijednosti opreme po lokacijama** — nova `/analytics`
+  stranica; `GET /api/analytics/discrepancies-by-location` agregira odstupanja preko svih
+  zaključanih inventura, `GET /api/analytics/value-by-category` po kategoriji. Provjereno: stranica
+  ispravno prikazuje prazno stanje (u demo bazi nema zaključane inventure) i ispravno prikazuje
+  graf vrijednosti po kategoriji te tablicu vrijednosti po lokaciji, bez grešaka u konzoli.
+- **Vremenska crta opreme** — `GET /api/equipment/{id}/timeline` spaja zaduženja, povijest
+  lokacije/statusa, zahtjeve za otpis i uploadane datoteke u jedan kronološki prikaz
+  (`MudTimeline` na `EquipmentProfile`). Provjereno: nakon promjene lokacije i zaduženja, oba
+  događaja odmah se pojavljuju na vremenskoj crti ispravnim redoslijedom.
+- **QR kod — unos i pronalazak opreme** — `GET /api/equipment/{id}/qrcode` (QRCoder, kodira samo
+  inventurni broj) prikazan na `EquipmentProfile`; nova `/equipment/scan` stranica nudi kameru
+  (vendored `jsQR`, prvi JS interop u aplikaciji) i ručni unos koda kao alternativu. Provjereno
+  (ručni unos, kamera provjerena vizualno jer headless preglednik nema pravu kameru): postojeći
+  inventurni broj vodi izravno na profil opreme; nepostojeći broj nudi "Kreiraj novu opremu s ovim
+  brojem", koji ispravno predispunjava formu za novu opremu.
 
 ## Sažetak
 
