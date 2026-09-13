@@ -10,9 +10,11 @@
             <MudNavLink Href="locations" Icon="@Icons.Material.Filled.LocationOn">Lokacije</MudNavLink>
             <MudNavLink Href="equipment" Icon="@Icons.Material.Filled.Inventory2">Oprema</MudNavLink>
             <MudNavLink Href="assignments" Icon="@Icons.Material.Filled.AssignmentInd">Zaduženja</MudNavLink>
+            <MudNavLink Href="equipment-requests" Icon="@Icons.Material.Filled.Assignment">Zahtjevi za opremu</MudNavLink>
         </Authorized>
     </AuthorizeView>
     <MudNavLink Href="my-equipment" Icon="@Icons.Material.Filled.Badge">Moja oprema</MudNavLink>
+    <MudNavLink Href="my-requests" Icon="@Icons.Material.Filled.RequestPage">Moji zahtjevi</MudNavLink>
     @* TODO(Section 15): remove this Admin-only stub once the real Users page lands. *@
     <AuthorizeView Roles="@RoleNames.Admin" Context="_">
         <Authorized>

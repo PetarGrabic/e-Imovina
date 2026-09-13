@@ -38,7 +38,7 @@
                 <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
             }
         </MudSelect>
-        <AuthorizeView Policy="InventoryManagement" Context="_">
+        <AuthorizeView Policy="LocationWork" Context="_">
             <Authorized>
                 <MudSelect T="int?" Label="Odgovorna osoba" Value="_responsibleEmployeeId" ValueChanged="OnResponsibleFilterChangedAsync"
                            Class="mr-4" Style="max-width: 200px;">
@@ -127,10 +127,9 @@
 
         if (_isManager)
         {
-            // Both the Lokacija and Odgovorna osoba filters are manager-only (see the two
-            // AuthorizeView blocks above) - a LocationResponsible caller is already force-scoped to
-            // their own location server-side, so these filters would be redundant/misleading for
-            // them and their supporting lookups are skipped entirely.
+            // The Lokacija filter is manager-only - a LocationResponsible caller is already
+            // force-scoped to their own location server-side, so it would be redundant/misleading
+            // for them and its supporting lookup is skipped entirely.
             var locationsTask = Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
             var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees?role=LocationResponsible");
             await Task.WhenAll(locationsTask, employeesTask, statusesTask);
@@ -146,7 +145,25 @@
         }
         else
         {
-            await statusesTask;
+            // The Odgovorna osoba filter still applies for LocationResponsible - a location can
+            // accumulate multiple Inventory rows with different ResponsibleEmployeeId values over
+            // time (staff turnover, an Admin naming someone else) - so scope the dropdown's options
+            // to just their own location's LocationResponsible-role employee(s), never other
+            // locations' people.
+            var myLocationResult = await Api.GetAsync<LookupDto?>("api/inventories/my-location");
+            if (myLocationResult.IsSuccess && myLocationResult.Value is not null)
+            {
+                var employeesTask = Api.GetAsync<List<LookupDto>>($"api/lookups/employees?locationId={myLocationResult.Value.Id}&role=LocationResponsible");
+                await Task.WhenAll(employeesTask, statusesTask);
+                if (employeesTask.Result.IsSuccess)
+                {
+                    _employees = employeesTask.Result.Value!;
+                }
+            }
+            else
+            {
+                await statusesTask;
+            }
         }
 
         if (statusesTask.Result.IsSuccess)

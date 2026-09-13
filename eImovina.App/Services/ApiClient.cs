@@ -45,6 +45,11 @@ public class ApiClient
     public Task<ApiResult> PostAsync(string requestUri, CancellationToken ct = default)
         => SendAsync(() => _http.PostAsync(requestUri, new StringContent(string.Empty), ct), ct);
 
+    // Bodyless POST with a typed response - e.g. "reactivate", which returns a computed result but
+    // takes no request body.
+    public Task<ApiResult<T>> PostAsync<T>(string requestUri, CancellationToken ct = default)
+        => SendAsync<T>(() => _http.PostAsync(requestUri, new StringContent(string.Empty), ct), ct);
+
     public Task<ApiResult<T>> PostFileAsync<T>(string requestUri, MultipartFormDataContent content, CancellationToken ct = default)
         => SendAsync<T>(() => _http.PostAsync(requestUri, content, ct), ct);
 

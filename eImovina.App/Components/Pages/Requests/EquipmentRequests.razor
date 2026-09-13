@@ -1,0 +1,201 @@
+@page "/equipment-requests"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.EquipmentRequests
+@using eImovina.Shared.Common
+@inject ApiClient Api
+@inject IDialogService DialogService
+
+<PageTitle>Zahtjevi za opremu — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Zahtjevi za opremu</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="EquipmentRequestListDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 220px;" />
+        <MudSelect T="int?" Label="Status" Value="_statusId" ValueChanged="OnStatusFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi statusi</MudSelectItem>
+            @foreach (var status in _statuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Kategorija" Value="_categoryId" ValueChanged="OnCategoryFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Sve kategorije</MudSelectItem>
+            @foreach (var category in _categories)
+            {
+                <MudSelectItem T="int?" Value="@((int?)category.Id)">@category.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Zaposlenik" Value="_employeeId" ValueChanged="OnEmployeeFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 200px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi zaposlenici</MudSelectItem>
+            @foreach (var employee in _employees)
+            {
+                <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="requester">Zaposlenik</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
+        <MudTh>Opis</MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
+        <MudTh>Poslano</MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Zaposlenik">@context.RequesterEmployeeName</MudTd>
+        <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
+        <MudTd DataLabel="Opis">@context.Description</MudTd>
+        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
+                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva zaposlenika {context.RequesterEmployeeName}" })" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema zahtjeva za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje zahtjeva…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<EquipmentRequestListDto> _table = null!;
+    private List<LookupDto> _statuses = new();
+    private List<LookupDto> _categories = new();
+    private List<LookupDto> _employees = new();
+    private string? _searchText;
+    private int? _statusId;
+    private int? _categoryId;
+    private int? _employeeId;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var statusesTask = Api.GetAsync<List<LookupDto>>("api/lookups/requeststatuses");
+        var categoriesTask = Api.GetAsync<List<LookupDto>>("api/lookups/equipmentcategories");
+        var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees");
+        await Task.WhenAll(statusesTask, categoriesTask, employeesTask);
+
+        if (statusesTask.Result.IsSuccess)
+        {
+            _statuses = statusesTask.Result.Value!;
+        }
+        if (categoriesTask.Result.IsSuccess)
+        {
+            _categories = categoriesTask.Result.Value!;
+        }
+        if (employeesTask.Result.IsSuccess)
+        {
+            _employees = employeesTask.Result.Value!;
+        }
+    }
+
+    private async Task<TableData<EquipmentRequestListDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+        if (_statusId is int statusId)
+        {
+            queryParams["RequestStatusId"] = statusId.ToString();
+        }
+        if (_categoryId is int categoryId)
+        {
+            queryParams["EquipmentCategoryId"] = categoryId.ToString();
+        }
+        if (_employeeId is int employeeId)
+        {
+            queryParams["RequesterEmployeeId"] = employeeId.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/equipmentrequests", queryParams);
+        var result = await Api.GetAsync<PagedResult<EquipmentRequestListDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<EquipmentRequestListDto> { TotalItems = 0, Items = Array.Empty<EquipmentRequestListDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<EquipmentRequestListDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private Task OnStatusFilterChangedAsync(int? value)
+    {
+        _statusId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnCategoryFilterChangedAsync(int? value)
+    {
+        _categoryId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnEmployeeFilterChangedAsync(int? value)
+    {
+        _employeeId = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        _statusId = null;
+        _categoryId = null;
+        _employeeId = null;
+        await _table.ReloadServerData();
+    }
+
+    private static readonly DialogOptions DetailDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenDetailAsync(EquipmentRequestListDto row)
+    {
+        var parameters = new DialogParameters<EquipmentRequestDetailDialog> { { x => x.Id, row.Id } };
+        var dialogReference = await DialogService.ShowAsync<EquipmentRequestDetailDialog>("Zahtjev za opremu", parameters, DetailDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+}

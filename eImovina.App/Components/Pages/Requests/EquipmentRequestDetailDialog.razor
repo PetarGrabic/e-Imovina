@@ -1,0 +1,164 @@
+@using eImovina.Shared.EquipmentRequests
+@using eImovina.Shared.Common
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else if (_loadError is not null)
+        {
+            <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
+        }
+        else
+        {
+            <MudStack Spacing="2">
+                <MudText><b>Zaposlenik:</b> @_requestDetail.RequesterEmployeeName</MudText>
+                <MudText><b>Kategorija:</b> @_requestDetail.CategoryName</MudText>
+                <MudText><b>Opis:</b> @_requestDetail.Description</MudText>
+                <MudText><b>Status:</b> @_requestDetail.StatusName</MudText>
+                <MudText><b>Poslano:</b> @_requestDetail.CreatedAtUtc.ToString("dd.MM.yyyy. HH:mm")</MudText>
+                @if (_requestDetail.DecisionAtUtc is not null)
+                {
+                    <MudText><b>Odluka:</b> @_requestDetail.DecisionByName, @_requestDetail.DecisionAtUtc.Value.ToString("dd.MM.yyyy. HH:mm")</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_requestDetail.DecisionNote))
+                    {
+                        <MudText><b>Napomena:</b> @_requestDetail.DecisionNote</MudText>
+                    }
+                }
+
+                @if (_allowedNextStatuses.Count > 0)
+                {
+                    <MudDivider Class="my-2" />
+                    <MudSelect T="int" Label="Novi status" @bind-Value="_selectedNextStatusId" Variant="Variant.Outlined">
+                        @foreach (var status in _allowedNextStatuses)
+                        {
+                            <MudSelectItem T="int" Value="@status.Id">@status.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_decisionNote" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                }
+            </MudStack>
+        }
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zatvori</MudButton>
+        @if (_allowedNextStatuses.Count > 0)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="DecideAsync" Disabled="@(_saving || _loading)">Potvrdi odluku</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // Mirrors EquipmentRequestsController's server-side transition map, purely for UX (which
+    // options to offer) - the server re-validates every transition regardless.
+    private static readonly Dictionary<int, int[]> AllowedTransitions = new()
+    {
+        [1] = [2],
+        [2] = [3, 4],
+        [3] = [5],
+        [4] = [6],
+        [5] = [6],
+    };
+
+    // Rejecting or administratively closing a request is treated as a one-way door in the UI -
+    // confirmed before submitting, same rationale as InventoryDetails.razor's LockInventoryAsync.
+    private static readonly HashSet<int> ConfirmBeforeStatusIds = [4, 6];
+
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int Id { get; set; }
+
+    private EquipmentRequestDetailDto? _request;
+    private EquipmentRequestDetailDto _requestDetail => _request!;
+    private List<LookupDto> _allStatuses = new();
+    private List<LookupDto> _allowedNextStatuses = new();
+    private int _selectedNextStatusId;
+    private string? _decisionNote;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _loadError;
+    private string? _errorMessage;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        var statusesTask = Api.GetAsync<List<LookupDto>>("api/lookups/requeststatuses");
+        var requestTask = Api.GetAsync<EquipmentRequestDetailDto>($"api/equipmentrequests/{Id}");
+        await Task.WhenAll(statusesTask, requestTask);
+
+        _loading = false;
+
+        if (!requestTask.Result.IsSuccess)
+        {
+            _loadError = requestTask.Result.Error!.Message;
+            return;
+        }
+
+        _request = requestTask.Result.Value;
+        if (statusesTask.Result.IsSuccess)
+        {
+            _allStatuses = statusesTask.Result.Value!;
+        }
+
+        _allowedNextStatuses = AllowedTransitions.TryGetValue(_request!.RequestStatusId, out var targets)
+            ? _allStatuses.Where(s => targets.Contains(s.Id)).ToList()
+            : new List<LookupDto>();
+
+        if (_allowedNextStatuses.Count > 0)
+        {
+            _selectedNextStatusId = _allowedNextStatuses[0].Id;
+        }
+    }
+
+    private async Task DecideAsync()
+    {
+        if (ConfirmBeforeStatusIds.Contains(_selectedNextStatusId))
+        {
+            var statusName = _allowedNextStatuses.First(s => s.Id == _selectedNextStatusId).Name;
+            var confirmed = await DialogService.ConfirmAsync(
+                "Potvrditi odluku?",
+                $"Status zahtjeva zaposlenika {_request!.RequesterEmployeeName} bit će promijenjen u „{statusName}”. Ova radnja se ne može poništiti.",
+                "Potvrdi",
+                Color.Error);
+            if (!confirmed)
+            {
+                return;
+            }
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PostAsync<DecideEquipmentRequestDto, EquipmentRequestDetailDto>(
+            $"api/equipmentrequests/{Id}/decide",
+            new DecideEquipmentRequestDto(_selectedNextStatusId, _decisionNote));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Odluka je zabilježena.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

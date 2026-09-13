@@ -318,7 +318,7 @@ public class EquipmentController : ControllerBase
     // created/last edited.
     [HttpPost("{id:int}/reactivate")]
     [Authorize(Policy = "InventoryManagement")]
-    public async Task<IActionResult> ReactivateEquipment(int id, CancellationToken ct)
+    public async Task<ActionResult<ReactivateEquipmentResultDto>> ReactivateEquipment(int id, CancellationToken ct)
     {
         var equipment = await _db.Equipment.FindAsync([id], ct);
         if (equipment is null)
@@ -334,14 +334,30 @@ public class EquipmentController : ControllerBase
         equipment.IsArchived = false;
         equipment.ArchivedAtUtc = null;
         await _db.SaveChangesAsync(ct);
-        return NoContent();
+
+        // Inventory item snapshots are frozen at open time (PROJECT_GUIDELINES.md) - reactivated
+        // equipment does NOT retroactively join a currently-open inventory at its location. Report
+        // whether one exists so the UI can tell the user why it won't show up until the next one.
+        var hasLiveInventoryAtLocation = await _db.Inventories.AnyAsync(
+            i => i.LocationId == equipment.CurrentLocationId && (i.InventoryStatusId == 2 || i.InventoryStatusId == 3), ct);
+
+        return Ok(new ReactivateEquipmentResultDto(hasLiveInventoryAtLocation));
     }
 
     private async Task<bool> IsEquipmentReferencedAsync(int id, CancellationToken ct)
     {
         var pendingWriteOffStatusIds = new[] { 1, 2, 3 }; // Zaprimljeno, U obradi, Odobreno (not Odbijeno/Provedeno)
+        // Only a still-live inventory (not yet Zakljucana) blocks archiving - a locked, historical
+        // inventory's captured snapshot is immutable regardless of the equipment's later archive
+        // state, so it shouldn't hold the equipment hostage forever (this was previously checked
+        // unconditionally against all-time history, contradicting the comment above - same class of
+        // bug as the one already fixed in LocationsController.IsLocationReferencedAsync).
+        var liveInventoryStatusIds = new[] { 2, 3, 4 }; // Otvorena, U tijeku, Zavrsena
         return await HasActiveAssignmentAsync(id, ct)
-            || await _db.InventoryItems.AnyAsync(ii => ii.EquipmentId == id, ct)
+            || await (from ii in _db.InventoryItems
+                      join inv in _db.Inventories on ii.InventoryId equals inv.Id
+                      where ii.EquipmentId == id && liveInventoryStatusIds.Contains(inv.InventoryStatusId)
+                      select ii).AnyAsync(ct)
             || await _db.WriteOffRequests.AnyAsync(w => w.EquipmentId == id && pendingWriteOffStatusIds.Contains(w.WriteOffRequestStatusId), ct);
     }
 

@@ -1,3 +1,4 @@
+using MudBlazor;
 using MudBlazor.Services;
 using eImovina.App.Auth;
 using eImovina.App.Components;
@@ -10,7 +11,10 @@ using Microsoft.AspNetCore.Authorization;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add MudBlazor services
-builder.Services.AddMudServices();
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+});
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

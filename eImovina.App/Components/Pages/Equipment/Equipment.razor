@@ -292,10 +292,16 @@
             return;
         }
 
-        var result = await Api.PostAsync($"api/equipment/{row.Id}/reactivate");
+        var result = await Api.PostAsync<ReactivateEquipmentResultDto>($"api/equipment/{row.Id}/reactivate");
         if (result.IsSuccess)
         {
             Snackbar.Add("Oprema je reaktivirana.", Severity.Success);
+            if (result.Value!.HasLiveInventoryAtLocation)
+            {
+                Snackbar.Add(
+                    "Napomena: na ovoj lokaciji trenutačno je inventura u tijeku - ova oprema neće biti uključena dok se ne otvori sljedeća inventura.",
+                    Severity.Info);
+            }
             await _table.ReloadServerData();
         }
         else

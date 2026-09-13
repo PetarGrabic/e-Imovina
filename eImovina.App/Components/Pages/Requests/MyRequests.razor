@@ -1,0 +1,85 @@
+@page "/my-requests"
+@attribute [Authorize]
+@using eImovina.Shared.EquipmentRequests
+@inject ApiClient Api
+@inject IDialogService DialogService
+
+<PageTitle>Moji zahtjevi — e-Imovina</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Moji zahtjevi</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+        Novi zahtjev
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <LoadingPanel Message="Učitavanje zahtjeva…" />
+}
+else if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
+}
+else if (_items.Count == 0)
+{
+    <EmptyState Message="Trenutačno nemate poslanih zahtjeva." />
+}
+else
+{
+    <MudTable T="EquipmentRequestListDto" Items="_items" Hover="true" Dense="true">
+        <HeaderContent>
+            <MudTh>Kategorija</MudTh>
+            <MudTh>Opis</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Poslano</MudTh>
+            <MudTh>Odluka</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
+            <MudTd DataLabel="Opis">@context.Description</MudTd>
+            <MudTd DataLabel="Status">@context.StatusName</MudTd>
+            <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+            <MudTd DataLabel="Odluka">@(context.DecisionAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<EquipmentRequestListDto> _items = new();
+    private bool _loading = true;
+    private string? _loadError;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+
+        var result = await Api.GetAsync<List<EquipmentRequestListDto>>("api/equipmentrequests/mine");
+        _loading = false;
+
+        if (result.IsSuccess)
+        {
+            _items = result.Value!;
+        }
+        else
+        {
+            _loadError = result.Error!.Message;
+        }
+    }
+
+    private static readonly DialogOptions CreateDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<CreateEquipmentRequestDialog>("Novi zahtjev za opremu", CreateDialogOptions);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+}
