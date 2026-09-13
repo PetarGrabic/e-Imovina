@@ -53,7 +53,9 @@
         }
         else
         {
-            var result = await Api.GetAsync<PagedResult<EquipmentListItemDto>>("api/equipment?PageSize=100&IsArchived=false");
+            // ExcludeStatusId=5 (Otpisano) - already-written-off equipment can't be selected for a
+            // new write-off (the API would reject it with a 409 anyway; this keeps it off the list).
+            var result = await Api.GetAsync<PagedResult<EquipmentListItemDto>>("api/equipment?PageSize=100&IsArchived=false&ExcludeStatusId=5");
             if (result.IsSuccess)
             {
                 _equipmentOptions = result.Value!.Items.ToList();

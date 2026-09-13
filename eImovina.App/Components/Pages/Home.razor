@@ -1,54 +1,197 @@
 @page "/"
+@using eImovina.Shared.Dashboard
 @inject ApiClient Api
 
 <PageTitle>Početna — e-Imovina</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">e-Imovina Županije</MudText>
-<MudText Class="mb-6" Typo="Typo.body1">
-    Sustav za evidenciju i upravljanje županijskom opremom.
-</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">Početna</MudText>
 
-<MudPaper Class="pa-4" MaxWidth="480px" Elevation="1">
-    <MudText Typo="Typo.subtitle1" GutterBottom="true">Status povezivanja s API-jem</MudText>
+@if (_state == LoadState.Loading)
+{
+    <LoadingPanel Message="Učitavanje nadzorne ploče…" />
+}
+else if (_state == LoadState.Error)
+{
+    <ErrorAlert Message="@_error" OnRetry="LoadAsync" />
+}
+else if (_isManager && _summary is not null)
+{
+    var summary = _summary;
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Ukupno opreme</MudText>
+                <MudText Typo="Typo.h4">@summary.TotalEquipmentCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Zadužena oprema</MudText>
+                <MudText Typo="Typo.h4">@summary.AssignedEquipmentCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Na servisu</MudText>
+                <MudText Typo="Typo.h4">@summary.OnServiceCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Nedostaje</MudText>
+                <MudText Typo="Typo.h4">@summary.MissingCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvoreni zahtjevi</MudText>
+                <MudText Typo="Typo.h4">@summary.OpenRequestsCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvorene inventure</MudText>
+                <MudText Typo="Typo.h4">@summary.OpenInventoriesCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Ukupna evidentirana vrijednost</MudText>
+                <MudText Typo="Typo.h4">@summary.TotalRecordedValue.ToString("0.00")</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
 
-    @if (_state == PingState.Loading)
-    {
-        <LoadingPanel Message="Povezivanje s API-jem…" />
-    }
-    else if (_state == PingState.Ok)
-    {
-        <MudAlert Severity="Severity.Success" Dense="true">API odgovara: @_status</MudAlert>
-    }
-    else
-    {
-        <ErrorAlert Message="@($"Greška pri povezivanju s API-jem: {_error}")" OnRetry="LoadAsync" />
-    }
-</MudPaper>
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Vrijednost opreme po lokaciji</MudText>
+                @if (summary.ValueByLocation.Count == 0)
+                {
+                    <EmptyState Message="Nema podataka o vrijednosti opreme." />
+                }
+                else
+                {
+                    <MudChart ChartType="ChartType.Bar" ChartSeries="@_locationSeries" ChartLabels="@_locationLabels" Width="100%" Height="300px" />
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Zadnje promjene</MudText>
+                @if (summary.RecentChanges.Count == 0)
+                {
+                    <EmptyState Message="Nema nedavnih promjena." />
+                }
+                else
+                {
+                    foreach (var change in summary.RecentChanges)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="py-1">
+                            @if (change.CoverFileId is int coverId)
+                            {
+                                <MudImage Src="@($"/files/{coverId}")" Alt="@change.EquipmentInventoryNumber" ObjectFit="ObjectFit.Cover" Width="40" Height="40" Class="rounded" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.ImageNotSupported" Color="Color.Default" />
+                            }
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@change.Description</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@change.OccurredAtUtc.ToLocalTime().ToString("dd.MM.yyyy. HH:mm")</MudText>
+                            </MudStack>
+                        </MudStack>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+else if (_myDashboard is not null)
+{
+    var myDashboard = _myDashboard;
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Trenutačno zadužena oprema</MudText>
+                <MudText Typo="Typo.h4">@myDashboard.CurrentAssignmentsCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvoreni zahtjevi</MudText>
+                <MudText Typo="Typo.h4">@myDashboard.OpenRequestsCount</MudText>
+            </MudPaper>
+        </MudItem>
+        @if (_isLocationResponsible)
+        {
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Otvorene inventure na mojoj lokaciji</MudText>
+                    <MudText Typo="Typo.h4">@myDashboard.OpenInventoriesAtMyLocationCount</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
 
 @code {
-    private enum PingState { Loading, Ok, Error }
+    [CascadingParameter] private Task<AuthenticationState> AuthStateTask { get; set; } = null!;
 
-    private PingState _state = PingState.Loading;
-    private string? _status;
+    private enum LoadState { Loading, Ok, Error }
+
+    private LoadState _state = LoadState.Loading;
+    private bool _isManager;
+    private bool _isLocationResponsible;
+    private DashboardSummaryDto? _summary;
+    private MyDashboardDto? _myDashboard;
     private string? _error;
+    private List<ChartSeries<double>> _locationSeries = new();
+    private string[] _locationLabels = Array.Empty<string>();
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {
-        _state = PingState.Loading;
-        var result = await Api.GetAsync<PingResponse>("api/ping");
-        if (result.IsSuccess)
+        _state = LoadState.Loading;
+
+        var authState = await AuthStateTask;
+        _isManager = authState.User.IsInRole(RoleNames.Admin) || authState.User.IsInRole(RoleNames.InventoryManager);
+        _isLocationResponsible = authState.User.IsInRole(RoleNames.LocationResponsible);
+
+        if (_isManager)
         {
-            _status = result.Value?.Status ?? "(prazan odgovor)";
-            _state = PingState.Ok;
+            var result = await Api.GetAsync<DashboardSummaryDto>("api/dashboard");
+            if (result.IsSuccess)
+            {
+                var summary = result.Value!;
+                _summary = summary;
+                _locationLabels = summary.ValueByLocation.Select(x => x.LocationName).ToArray();
+                _locationSeries = new List<ChartSeries<double>>
+                {
+                    new() { Name = "Vrijednost", Data = summary.ValueByLocation.Select(x => (double)x.TotalValue).ToArray() },
+                };
+                _state = LoadState.Ok;
+            }
+            else
+            {
+                _error = result.Error!.Message;
+                _state = LoadState.Error;
+            }
         }
         else
         {
-            _error = result.Error!.Message;
-            _state = PingState.Error;
+            var result = await Api.GetAsync<MyDashboardDto>("api/dashboard/mine");
+            if (result.IsSuccess)
+            {
+                _myDashboard = result.Value;
+                _state = LoadState.Ok;
+            }
+            else
+            {
+                _error = result.Error!.Message;
+                _state = LoadState.Error;
+            }
         }
     }
-
-    private sealed record PingResponse(string Status);
 }

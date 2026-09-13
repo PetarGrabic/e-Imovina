@@ -68,6 +68,11 @@ public class EquipmentController : ControllerBase
             filtered = filtered.Where(x => x.Equipment.EquipmentStatusId == statusId);
         }
 
+        if (query.ExcludeStatusId is int excludeStatusId)
+        {
+            filtered = filtered.Where(x => x.Equipment.EquipmentStatusId != excludeStatusId);
+        }
+
         if (query.LocationId is int locationId)
         {
             filtered = filtered.Where(x => x.Equipment.CurrentLocationId == locationId);

@@ -11,6 +11,7 @@ public sealed class EquipmentQuery : ListQuery
 {
     public int? CategoryId { get; set; }
     public int? StatusId { get; set; }
+    public int? ExcludeStatusId { get; set; }
     public int? LocationId { get; set; }
     public int? EmployeeId { get; set; }
     public bool? IsArchived { get; set; }
