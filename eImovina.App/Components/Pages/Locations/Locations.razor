@@ -51,7 +51,7 @@
         <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="name">Naziv</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="code">Oznaka</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="locationType">Tip</MudTableSortLabel></MudTh>
-        <MudTh>Adresa</MudTh>
+        <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="address">Adresa</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="LocationListItemDto" SortLabel="isActive">Status</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
@@ -68,10 +68,14 @@
         <MudTd DataLabel="Akcije">
             <AuthorizeView Policy="InventoryManagement" Context="_">
                 <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialogAsync(context.Id))"
-                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
-                    <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveAsync(context))"
-                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Ukloni {context.Name}" })" />
+                    <MudTooltip Text="Uredi">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialogAsync(context.Id))"
+                                       UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
+                    </MudTooltip>
+                    <MudTooltip Text="Ukloni">
+                        <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveAsync(context))"
+                                       UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Ukloni {context.Name}" })" />
+                    </MudTooltip>
                 </Authorized>
             </AuthorizeView>
         </MudTd>

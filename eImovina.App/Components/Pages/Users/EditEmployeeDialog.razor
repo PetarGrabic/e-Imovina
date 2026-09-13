@@ -1,0 +1,118 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Employees
+@using eImovina.Shared.Locations
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje zaposlenika…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    <MudTextField T="string" Label="Ime" @bind-Value="_model.FirstName" For="@(() => _model.FirstName)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="Prezime" @bind-Value="_model.LastName" For="@(() => _model.LastName)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudSelect T="int" Label="Lokacija" @bind-Value="_model.LocationId" For="@(() => _model.LocationId)" Variant="Variant.Outlined">
+                        @foreach (var location in _locations)
+                        {
+                            <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+            </MudForm>
+        }
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="@(_saving || _loading)">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public int EmployeeId { get; set; }
+
+    private MudForm _form = null!;
+    private readonly EmployeeFormModel _model = new();
+    private List<LocationListItemDto> _locations = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var employeeTask = Api.GetAsync<EmployeeDetailDto>($"api/employees/{EmployeeId}");
+        var locationsTask = Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+        await Task.WhenAll(employeeTask, locationsTask);
+
+        if (locationsTask.Result.IsSuccess)
+        {
+            _locations = locationsTask.Result.Value!.Items.ToList();
+        }
+
+        if (employeeTask.Result.IsSuccess)
+        {
+            var employee = employeeTask.Result.Value!;
+            _model.FirstName = employee.FirstName;
+            _model.LastName = employee.LastName;
+            _model.LocationId = employee.LocationId;
+        }
+        else
+        {
+            _errorMessage = employeeTask.Result.Error!.Message;
+        }
+
+        _loading = false;
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PutAsync<UpdateEmployeeDto, EmployeeDetailDto>(
+            $"api/employees/{EmployeeId}",
+            new UpdateEmployeeDto(_model.FirstName, _model.LastName, _model.LocationId));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class EmployeeFormModel
+    {
+        [Required(ErrorMessage = "Ime je obavezno.")]
+        [MaxLength(100)]
+        public string FirstName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Prezime je obavezno.")]
+        [MaxLength(100)]
+        public string LastName { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati lokaciju.")]
+        public int LocationId { get; set; }
+    }
+}

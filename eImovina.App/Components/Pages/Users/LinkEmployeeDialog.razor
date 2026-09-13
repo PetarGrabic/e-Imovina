@@ -1,0 +1,157 @@
+@using System.ComponentModel.DataAnnotations
+@using eImovina.Shared.Employees
+@using eImovina.Shared.Locations
+@using eImovina.Shared.Users
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-3">Korisnik: <b>@UserName</b></MudText>
+        <MudSwitch T="bool" @bind-Value="_creatingNew" Label="Kreiraj novog zaposlenika" Color="Color.Primary" Class="mb-3" />
+
+        @if (!_creatingNew)
+        {
+            <MudSelect T="int?" Label="Zaposlenik" @bind-Value="_employeeId" Variant="Variant.Outlined">
+                <MudSelectItem T="int?" Value="@((int?)null)">Nepovezano</MudSelectItem>
+                @foreach (var employee in _employees)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudForm @ref="_newEmployeeForm" Model="@_newEmployeeModel">
+                <MudStack Spacing="3">
+                    <MudTextField T="string" Label="Ime" @bind-Value="_newEmployeeModel.FirstName" For="@(() => _newEmployeeModel.FirstName)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="Prezime" @bind-Value="_newEmployeeModel.LastName" For="@(() => _newEmployeeModel.LastName)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudSelect T="int" Label="Lokacija" @bind-Value="_newEmployeeModel.LocationId" For="@(() => _newEmployeeModel.LocationId)" Variant="Variant.Outlined">
+                        @foreach (var location in _locations)
+                        {
+                            <MudSelectItem T="int" Value="@location.Id">@location.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+            </MudForm>
+        }
+
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public int UserId { get; set; }
+    [Parameter] public string UserName { get; set; } = string.Empty;
+    [Parameter] public int? CurrentEmployeeId { get; set; }
+    [Parameter] public string? CurrentEmployeeName { get; set; }
+
+    private List<LookupDto> _employees = new();
+    private List<LocationListItemDto> _locations = new();
+    private int? _employeeId;
+    private bool _creatingNew;
+    private MudForm _newEmployeeForm = null!;
+    private readonly NewEmployeeFormModel _newEmployeeModel = new();
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employeeId = CurrentEmployeeId;
+
+        var employeesTask = Api.GetAsync<List<LookupDto>>("api/lookups/employees?unlinkedOnly=true");
+        var locationsTask = Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
+        await Task.WhenAll(employeesTask, locationsTask);
+
+        if (employeesTask.Result.IsSuccess)
+        {
+            _employees = employeesTask.Result.Value!;
+        }
+        if (locationsTask.Result.IsSuccess)
+        {
+            _locations = locationsTask.Result.Value!.Items.ToList();
+        }
+
+        // The unlinkedOnly fetch excludes the employee currently linked to THIS user (they're
+        // "linked", just to this account) - add them back so the current value still shows and
+        // stays selectable (re-selecting it is a harmless no-op change).
+        if (CurrentEmployeeId is int currentId && _employees.All(e => e.Id != currentId))
+        {
+            _employees.Insert(0, new LookupDto(currentId, CurrentEmployeeName ?? $"#{currentId}"));
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _errorMessage = null;
+
+        var employeeIdToLink = _employeeId;
+
+        if (_creatingNew)
+        {
+            await _newEmployeeForm.ValidateAsync();
+            if (!_newEmployeeForm.IsValid)
+            {
+                return;
+            }
+
+            _saving = true;
+
+            var createResult = await Api.PostAsync<CreateEmployeeDto, EmployeeDetailDto>(
+                "api/employees",
+                new CreateEmployeeDto(_newEmployeeModel.FirstName, _newEmployeeModel.LastName, _newEmployeeModel.LocationId));
+
+            if (!createResult.IsSuccess)
+            {
+                _saving = false;
+                _errorMessage = createResult.Error!.Message;
+                return;
+            }
+
+            employeeIdToLink = createResult.Value!.Id;
+        }
+        else
+        {
+            _saving = true;
+        }
+
+        var linkResult = await Api.PutAsync<LinkEmployeeDto, UserDetailDto>(
+            $"api/users/{UserId}/employee",
+            new LinkEmployeeDto(employeeIdToLink));
+
+        _saving = false;
+
+        if (linkResult.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = linkResult.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class NewEmployeeFormModel
+    {
+        [Required(ErrorMessage = "Ime je obavezno.")]
+        [MaxLength(100)]
+        public string FirstName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Prezime je obavezno.")]
+        [MaxLength(100)]
+        public string LastName { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Potrebno je odabrati lokaciju.")]
+        public int LocationId { get; set; }
+    }
+}

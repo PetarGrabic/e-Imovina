@@ -79,7 +79,10 @@ public class WriteOffRequestsController : ControllerBase
         filtered = query.Sort?.ToLowerInvariant() switch
         {
             "equipment" => descending ? filtered.OrderByDescending(x => x.EquipmentInventoryNumber) : filtered.OrderBy(x => x.EquipmentInventoryNumber),
+            "reason" => descending ? filtered.OrderByDescending(x => x.WriteOff.Reason) : filtered.OrderBy(x => x.WriteOff.Reason),
             "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
+            "submittedby" => descending ? filtered.OrderByDescending(x => x.SubmittedByName) : filtered.OrderBy(x => x.SubmittedByName),
+            "createdat" => descending ? filtered.OrderByDescending(x => x.WriteOff.CreatedAtUtc) : filtered.OrderBy(x => x.WriteOff.CreatedAtUtc),
             _ => filtered.OrderByDescending(x => x.WriteOff.CreatedAtUtc),
         };
 

@@ -95,8 +95,6 @@ Table Employees {
   Id integer [pk, increment]
   FirstName varchar(100) [not null]
   LastName varchar(100) [not null]
-  Email varchar(200) [not null, unique]
-  JobTitle varchar(150)
   LocationId integer [not null]
   IsActive boolean [not null, default: true]
   CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]

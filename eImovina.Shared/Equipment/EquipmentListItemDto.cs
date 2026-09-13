@@ -6,6 +6,7 @@ public sealed record EquipmentListItemDto(
     string? SerialNumber,
     string Name,
     string CategoryName,
+    int EquipmentStatusId,
     string StatusName,
     string LocationName,
     decimal? PurchaseValue,

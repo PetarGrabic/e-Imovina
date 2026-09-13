@@ -52,20 +52,24 @@
     <HeaderContent>
         <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="requester">Zaposlenik</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
-        <MudTh>Opis</MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="description">Opis</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
-        <MudTh>Poslano</MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="createdat">Poslano</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Zaposlenik">@context.RequesterEmployeeName</MudTd>
         <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
         <MudTd DataLabel="Opis">@context.Description</MudTd>
-        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.RequestStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
         <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
         <MudTd DataLabel="Akcije">
-            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva zaposlenika {context.RequesterEmployeeName}" })" />
+            <MudTooltip Text="Detalji">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva zaposlenika {context.RequesterEmployeeName}" })" />
+            </MudTooltip>
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
@@ -185,6 +189,17 @@
         _employeeId = null;
         await _table.ReloadServerData();
     }
+
+    // RequestStatuses fixed seeded ids: 1 Zaprimljeno, 2 U obradi, 3 Odobreno, 4 Odbijeno,
+    // 5 Realizirano, 6 Zatvoreno.
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        2 => Color.Warning,
+        3 or 5 => Color.Success,
+        4 => Color.Error,
+        6 => Color.Default,
+        _ => Color.Info,
+    };
 
     private static readonly DialogOptions DetailDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 

@@ -91,6 +91,7 @@ public class EquipmentController : ControllerBase
             "category" => descending ? filtered.OrderByDescending(x => x.CategoryName) : filtered.OrderBy(x => x.CategoryName),
             "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
             "location" => descending ? filtered.OrderByDescending(x => x.LocationName) : filtered.OrderBy(x => x.LocationName),
+            "value" => descending ? filtered.OrderByDescending(x => x.Equipment.PurchaseValue) : filtered.OrderBy(x => x.Equipment.PurchaseValue),
             _ => descending ? filtered.OrderByDescending(x => x.Equipment.Name) : filtered.OrderBy(x => x.Equipment.Name),
         };
 
@@ -102,7 +103,7 @@ public class EquipmentController : ControllerBase
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new EquipmentListItemDto(
-                x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.SerialNumber, x.Equipment.Name, x.CategoryName, x.StatusName, x.LocationName, x.Equipment.PurchaseValue, x.Equipment.Currency,
+                x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.SerialNumber, x.Equipment.Name, x.CategoryName, x.Equipment.EquipmentStatusId, x.StatusName, x.LocationName, x.Equipment.PurchaseValue, x.Equipment.Currency,
                 _db.EquipmentFiles.Where(f => f.EquipmentId == x.Equipment.Id && f.IsCoverImage).Select(f => (int?)f.Id).FirstOrDefault(),
                 x.Equipment.IsArchived))
             .ToListAsync(ct);

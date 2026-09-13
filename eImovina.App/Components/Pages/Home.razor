@@ -20,43 +20,43 @@ else if (_isManager && _summary is not null)
     <MudGrid Class="mb-4">
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Ukupno opreme</MudText>
+                <MudText Typo="Typo.body2">Ukupno opreme</MudText>
                 <MudText Typo="Typo.h4">@summary.TotalEquipmentCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Zadužena oprema</MudText>
+                <MudText Typo="Typo.body2">Zadužena oprema</MudText>
                 <MudText Typo="Typo.h4">@summary.AssignedEquipmentCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Na servisu</MudText>
+                <MudText Typo="Typo.body2">Na servisu</MudText>
                 <MudText Typo="Typo.h4">@summary.OnServiceCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Nedostaje</MudText>
+                <MudText Typo="Typo.body2">Nedostaje</MudText>
                 <MudText Typo="Typo.h4">@summary.MissingCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvoreni zahtjevi</MudText>
+                <MudText Typo="Typo.body2">Otvoreni zahtjevi</MudText>
                 <MudText Typo="Typo.h4">@summary.OpenRequestsCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvorene inventure</MudText>
+                <MudText Typo="Typo.body2">Otvorene inventure</MudText>
                 <MudText Typo="Typo.h4">@summary.OpenInventoriesCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Ukupna evidentirana vrijednost</MudText>
+                <MudText Typo="Typo.body2">Ukupna evidentirana vrijednost</MudText>
                 <MudText Typo="Typo.h4">@summary.TotalRecordedValue.ToString("0.00")</MudText>
             </MudPaper>
         </MudItem>
@@ -98,7 +98,7 @@ else if (_isManager && _summary is not null)
                             }
                             <MudStack Spacing="0">
                                 <MudText Typo="Typo.body2">@change.Description</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@change.OccurredAtUtc.ToLocalTime().ToString("dd.MM.yyyy. HH:mm")</MudText>
+                                <MudText Typo="Typo.caption">@change.OccurredAtUtc.ToLocalTime().ToString("dd.MM.yyyy. HH:mm")</MudText>
                             </MudStack>
                         </MudStack>
                     }
@@ -113,13 +113,13 @@ else if (_myDashboard is not null)
     <MudGrid>
         <MudItem xs="12" sm="6">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Trenutačno zadužena oprema</MudText>
+                <MudText Typo="Typo.body2">Trenutačno zadužena oprema</MudText>
                 <MudText Typo="Typo.h4">@myDashboard.CurrentAssignmentsCount</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6">
             <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Otvoreni zahtjevi</MudText>
+                <MudText Typo="Typo.body2">Otvoreni zahtjevi</MudText>
                 <MudText Typo="Typo.h4">@myDashboard.OpenRequestsCount</MudText>
             </MudPaper>
         </MudItem>
@@ -127,7 +127,7 @@ else if (_myDashboard is not null)
         {
             <MudItem xs="12" sm="6">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Otvorene inventure na mojoj lokaciji</MudText>
+                    <MudText Typo="Typo.body2">Otvorene inventure na mojoj lokaciji</MudText>
                     <MudText Typo="Typo.h4">@myDashboard.OpenInventoriesAtMyLocationCount</MudText>
                 </MudPaper>
             </MudItem>

@@ -49,6 +49,7 @@ public class LocationsController : ControllerBase
         {
             "code" => descending ? filtered.OrderByDescending(x => x.Location.Code) : filtered.OrderBy(x => x.Location.Code),
             "locationtype" => descending ? filtered.OrderByDescending(x => x.LocationTypeName) : filtered.OrderBy(x => x.LocationTypeName),
+            "address" => descending ? filtered.OrderByDescending(x => x.Location.Address) : filtered.OrderBy(x => x.Location.Address),
             "isactive" => descending ? filtered.OrderByDescending(x => x.Location.IsActive) : filtered.OrderBy(x => x.Location.IsActive),
             _ => descending ? filtered.OrderByDescending(x => x.Location.Name) : filtered.OrderBy(x => x.Location.Name),
         };

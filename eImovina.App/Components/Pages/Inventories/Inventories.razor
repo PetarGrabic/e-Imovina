@@ -60,37 +60,47 @@
     </ToolBarContent>
     <HeaderContent>
         <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="location">Lokacija</MudTableSortLabel></MudTh>
-        <MudTh>Odgovorna osoba</MudTh>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="responsible">Odgovorna osoba</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="opened">Otvorena</MudTableSortLabel></MudTh>
-        <MudTh>Završena</MudTh>
-        <MudTh>Zaključana</MudTh>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="completed">Završena</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="InventoryListDto" SortLabel="locked">Zaključana</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
         <MudTd DataLabel="Odgovorna osoba">@context.ResponsibleEmployeeName</MudTd>
-        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.InventoryStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
         <MudTd DataLabel="Otvorena">@(context.OpenedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
         <MudTd DataLabel="Završena">@(context.CompletedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
         <MudTd DataLabel="Zaključana">@(context.LockedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
         <MudTd DataLabel="Akcije">
-            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/inventories/{context.Id}")"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji inventure na lokaciji {context.LocationName}" })" />
+            <MudTooltip Text="Detalji">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/inventories/{context.Id}")"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji inventure na lokaciji {context.LocationName}" })" />
+            </MudTooltip>
             @if (context.InventoryStatusId == 1)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" OnClick="@(() => OpenInventoryAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Otvori inventuru na lokaciji {context.LocationName}" })" />
+                <MudTooltip Text="Otvori">
+                    <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" OnClick="@(() => OpenInventoryAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Otvori inventuru na lokaciji {context.LocationName}" })" />
+                </MudTooltip>
             }
             else if (context.InventoryStatusId is 2 or 3)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" OnClick="@(() => CompleteInventoryAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Završi inventuru na lokaciji {context.LocationName}" })" />
+                <MudTooltip Text="Završi">
+                    <MudIconButton Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" OnClick="@(() => CompleteInventoryAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Završi inventuru na lokaciji {context.LocationName}" })" />
+                </MudTooltip>
             }
             else if (context.InventoryStatusId == 4)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Error" OnClick="@(() => LockInventoryAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Zaključaj inventuru na lokaciji {context.LocationName}" })" />
+                <MudTooltip Text="Zaključaj">
+                    <MudIconButton Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Error" OnClick="@(() => LockInventoryAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Zaključaj inventuru na lokaciji {context.LocationName}" })" />
+                </MudTooltip>
             }
         </MudTd>
     </RowTemplate>
@@ -239,6 +249,15 @@
         _responsibleEmployeeId = null;
         await _table.ReloadServerData();
     }
+
+    // InventoryStatuses fixed seeded ids: 1 Nacrt, 2 Otvorena, 3 U tijeku, 4 Završena, 5 Zaključana.
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        2 => Color.Info,
+        3 => Color.Warning,
+        4 => Color.Success,
+        _ => Color.Default,
+    };
 
     private static readonly DialogOptions InventoryDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 

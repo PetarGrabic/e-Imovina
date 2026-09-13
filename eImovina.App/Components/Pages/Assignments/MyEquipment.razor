@@ -1,5 +1,6 @@
 @page "/my-equipment"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.WebUtilities
 @using eImovina.Shared.Assignments
 @inject ApiClient Api
 
@@ -7,61 +8,92 @@
 
 <MudText Typo="Typo.h5" GutterBottom="true">Moja oprema</MudText>
 
-@if (_loading)
+@if (_loadError is not null)
 {
-    <LoadingPanel Message="Učitavanje opreme…" />
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
 }
-else if (_loadError is not null)
-{
-    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
-}
-else if (_items.Count == 0)
-{
-    <EmptyState Message="Trenutačno nemate zaduženu opremu." />
-}
-else
-{
-    <MudTable T="MyAssignmentDto" Items="_items" Hover="true" Dense="true">
-        <HeaderContent>
-            <MudTh>Inventurni broj</MudTh>
-            <MudTh>Naziv</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh>Zaduženo od</MudTh>
-            <MudTh>Napomena</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
-            <MudTd DataLabel="Naziv">@context.EquipmentName</MudTd>
-            <MudTd DataLabel="Status">@context.StatusName</MudTd>
-            <MudTd DataLabel="Zaduženo od">@context.AssignedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
-            <MudTd DataLabel="Napomena">@(context.Note ?? "—")</MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+
+<MudTable T="MyAssignmentDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 260px;" />
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="MyAssignmentDto" SortLabel="inventorynumber">Inventurni broj</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="MyAssignmentDto" SortLabel="name">Naziv</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="MyAssignmentDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="MyAssignmentDto" SortLabel="assignedat">Zaduženo od</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="MyAssignmentDto" SortLabel="note">Napomena</MudTableSortLabel></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
+        <MudTd DataLabel="Naziv">@context.EquipmentName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="Color.Info" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
+        <MudTd DataLabel="Zaduženo od">@context.AssignedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+        <MudTd DataLabel="Napomena">@(context.Note ?? "—")</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Trenutačno nemate zaduženu opremu." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje opreme…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
 
 @code {
-    private List<MyAssignmentDto> _items = new();
-    private bool _loading = true;
+    private MudTable<MyAssignmentDto> _table = null!;
+    private string? _searchText;
     private string? _loadError;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
-
-    private async Task LoadAsync()
+    private async Task<TableData<MyAssignmentDto>> ServerReloadAsync(TableState state, CancellationToken ct)
     {
-        _loading = true;
-        _loadError = null;
-        StateHasChanged();
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
 
-        var result = await Api.GetAsync<List<MyAssignmentDto>>("api/assignments/mine");
-        _loading = false;
-
-        if (result.IsSuccess)
+        var queryParams = new Dictionary<string, string?>
         {
-            _items = result.Value!;
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
         }
-        else
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+
+        var url = QueryHelpers.AddQueryString("api/assignments/mine", queryParams);
+        var result = await Api.GetAsync<PagedResult<MyAssignmentDto>>(url, ct);
+
+        if (!result.IsSuccess)
         {
             _loadError = result.Error!.Message;
+            return new TableData<MyAssignmentDto> { TotalItems = 0, Items = Array.Empty<MyAssignmentDto>() };
         }
+
+        _loadError = null;
+        return new TableData<MyAssignmentDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        await _table.ReloadServerData();
     }
 }

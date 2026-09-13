@@ -98,7 +98,9 @@ public class EquipmentRequestsController : ControllerBase
         {
             "requester" => descending ? filtered.OrderByDescending(x => x.RequesterName) : filtered.OrderBy(x => x.RequesterName),
             "category" => descending ? filtered.OrderByDescending(x => x.CategoryName) : filtered.OrderBy(x => x.CategoryName),
+            "description" => descending ? filtered.OrderByDescending(x => x.Request.Description) : filtered.OrderBy(x => x.Request.Description),
             "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
+            "createdat" => descending ? filtered.OrderByDescending(x => x.Request.CreatedAtUtc) : filtered.OrderBy(x => x.Request.CreatedAtUtc),
             _ => filtered.OrderByDescending(x => x.Request.CreatedAtUtc),
         };
 
@@ -142,29 +144,64 @@ public class EquipmentRequestsController : ControllerBase
     // nothing to show - same convention as AssignmentsController.GetMine.
     [HttpGet("mine")]
     [Authorize]
-    public async Task<ActionResult<List<EquipmentRequestListDto>>> GetMine(CancellationToken ct)
+    public async Task<ActionResult<PagedResult<EquipmentRequestListDto>>> GetMine([FromQuery] MyEquipmentRequestQuery query, CancellationToken ct)
     {
+        var page = Math.Max(query.Page, 1);
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+
         var employeeId = _currentUser.EmployeeId;
         if (employeeId is null)
         {
-            return Ok(new List<EquipmentRequestListDto>());
+            return Ok(new PagedResult<EquipmentRequestListDto>(Array.Empty<EquipmentRequestListDto>(), 0, page, pageSize));
         }
 
-        var items = await (
+        var filtered =
             from r in _db.EquipmentRequests.AsNoTracking()
             join emp in _db.Employees.AsNoTracking() on r.RequesterEmployeeId equals emp.Id
             join cat in _db.EquipmentCategories.AsNoTracking() on r.EquipmentCategoryId equals cat.Id
             join s in _db.RequestStatuses.AsNoTracking() on r.RequestStatusId equals s.Id
             where r.RequesterEmployeeId == employeeId
-            orderby r.CreatedAtUtc descending
-            select new EquipmentRequestListDto(
-                r.Id, r.RequesterEmployeeId, emp.FirstName + " " + emp.LastName,
-                r.EquipmentCategoryId, cat.Name,
-                r.RequestStatusId, s.Name,
-                r.Description, r.CreatedAtUtc, r.DecisionAtUtc)
-        ).ToListAsync(ct);
+            select new { Request = r, RequesterName = emp.FirstName + " " + emp.LastName, CategoryName = cat.Name, StatusName = s.Name };
 
-        return Ok(items);
+        if (!string.IsNullOrWhiteSpace(query.Text))
+        {
+            var text = query.Text.Trim();
+            filtered = filtered.Where(x => EF.Functions.Like(x.Request.Description, $"%{text}%"));
+        }
+
+        if (query.RequestStatusId is int statusId)
+        {
+            filtered = filtered.Where(x => x.Request.RequestStatusId == statusId);
+        }
+
+        var descending = query.Dir == SortDirection.Descending;
+        filtered = query.Sort?.ToLowerInvariant() switch
+        {
+            "category" => descending ? filtered.OrderByDescending(x => x.CategoryName) : filtered.OrderBy(x => x.CategoryName),
+            "description" => descending ? filtered.OrderByDescending(x => x.Request.Description) : filtered.OrderBy(x => x.Request.Description),
+            "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
+            "decision" => descending ? filtered.OrderByDescending(x => x.Request.DecisionAtUtc) : filtered.OrderBy(x => x.Request.DecisionAtUtc),
+            // No explicit sort requested: most-recent-first is the natural default, regardless of
+            // Dir - matches GetEquipmentRequests' own default branch (Sort is only ever empty on
+            // initial page load, where MudTable's un-clicked SortDirection still gets mapped to
+            // "Ascending" by ServerReloadAsync - respecting Dir here would silently invert the
+            // default to oldest-first).
+            _ => filtered.OrderByDescending(x => x.Request.CreatedAtUtc),
+        };
+
+        var totalCount = await filtered.CountAsync(ct);
+
+        var items = await filtered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new EquipmentRequestListDto(
+                x.Request.Id, x.Request.RequesterEmployeeId, x.RequesterName,
+                x.Request.EquipmentCategoryId, x.CategoryName,
+                x.Request.RequestStatusId, x.StatusName,
+                x.Request.Description, x.Request.CreatedAtUtc, x.Request.DecisionAtUtc))
+            .ToListAsync(ct);
+
+        return Ok(new PagedResult<EquipmentRequestListDto>(items, totalCount, page, pageSize));
     }
 
     [HttpPost("mine")]

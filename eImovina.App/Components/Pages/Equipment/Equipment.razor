@@ -74,7 +74,7 @@
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="location">Lokacija</MudTableSortLabel></MudTh>
-        <MudTh>Vrijednost</MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentListItemDto" SortLabel="value">Vrijednost</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
@@ -91,23 +91,33 @@
         <MudTd DataLabel="Inventurni broj">@context.InventoryNumber</MudTd>
         <MudTd DataLabel="Naziv">@context.Name</MudTd>
         <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
-        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.EquipmentStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
         <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
         <MudTd DataLabel="Vrijednost">@(context.PurchaseValue is decimal v ? $"{v:0.00} {context.Currency}" : "—")</MudTd>
         <MudTd DataLabel="Akcije">
-            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/equipment/{context.Id}")"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji {context.Name}" })" />
-            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Href="@($"/equipment/{context.Id}/edit")"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
+            <MudTooltip Text="Detalji">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Href="@($"/equipment/{context.Id}")"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji {context.Name}" })" />
+            </MudTooltip>
+            <MudTooltip Text="Uredi">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Href="@($"/equipment/{context.Id}/edit")"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.Name}" })" />
+            </MudTooltip>
             @if (context.IsArchived)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Unarchive" Size="Size.Small" Color="Color.Success" OnClick="@(() => ReactivateAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Reaktiviraj {context.Name}" })" />
+                <MudTooltip Text="Reaktiviraj">
+                    <MudIconButton Icon="@Icons.Material.Filled.Unarchive" Size="Size.Small" Color="Color.Success" OnClick="@(() => ReactivateAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Reaktiviraj {context.Name}" })" />
+                </MudTooltip>
             }
             else
             {
-                <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Error" OnClick="@(() => ArchiveAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Arhiviraj {context.Name}" })" />
+                <MudTooltip Text="Arhiviraj">
+                    <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Error" OnClick="@(() => ArchiveAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Arhiviraj {context.Name}" })" />
+                </MudTooltip>
             }
         </MudTd>
     </RowTemplate>
@@ -255,6 +265,17 @@
         _isArchived = false;
         await _table.ReloadServerData();
     }
+
+    // EquipmentStatuses fixed seeded ids: 1 Na skladištu, 2 Zaduženo, 3 Na servisu, 4 Nedostaje,
+    // 5 Otpisano. Color.Error reserved for genuinely concerning states (Nedostaje) only.
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        1 => Color.Success,
+        2 => Color.Info,
+        3 => Color.Warning,
+        4 => Color.Error,
+        _ => Color.Default,
+    };
 
     private async Task ArchiveAsync(EquipmentListItemDto row)
     {

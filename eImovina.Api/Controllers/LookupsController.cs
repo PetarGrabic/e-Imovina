@@ -23,7 +23,7 @@ public class LookupsController : ControllerBase
     // shows Name and stores/sends Id. AppRoles has no IsActive column (see AppRole entity), so
     // it's the one branch with no Where(x => x.IsActive) filter.
     [HttpGet("{name}")]
-    public async Task<ActionResult<List<LookupDto>>> GetLookup(string name, [FromQuery] int? locationId, [FromQuery] string? role, CancellationToken ct)
+    public async Task<ActionResult<List<LookupDto>>> GetLookup(string name, [FromQuery] int? locationId, [FromQuery] string? role, [FromQuery] bool? unlinkedOnly, CancellationToken ct)
     {
         // Only used by the "employees" branch below. Built as a plain C# branch (not an
         // `employeeIdsWithRole == null || ...` check inside the query itself) because EF Core
@@ -36,19 +36,29 @@ public class LookupsController : ControllerBase
         IQueryable<Employee> EmployeesQuery()
         {
             var employees = _db.Employees.AsNoTracking().Where(e => e.IsActive && (locationId == null || e.LocationId == locationId));
-            if (role is null)
+            if (role is not null)
             {
-                return employees;
+                var employeeIdsWithRole =
+                    from ur in _db.AppUserRoles.AsNoTracking()
+                    join r in _db.AppRoles.AsNoTracking() on ur.AppRoleId equals r.Id
+                    join u in _db.AppUsers.AsNoTracking() on ur.AppUserId equals u.Id
+                    where r.Name == role && u.EmployeeId != null
+                    select u.EmployeeId!.Value;
+
+                employees = employees.Where(e => employeeIdsWithRole.Contains(e.Id));
             }
 
-            var employeeIdsWithRole =
-                from ur in _db.AppUserRoles.AsNoTracking()
-                join r in _db.AppRoles.AsNoTracking() on ur.AppRoleId equals r.Id
-                join u in _db.AppUsers.AsNoTracking() on ur.AppUserId equals u.Id
-                where r.Name == role && u.EmployeeId != null
-                select u.EmployeeId!.Value;
+            // Users.razor's employee-link picker (Section 15) - an employee already linked to an
+            // AppUser account shouldn't be offered as a choice the API would just reject with a
+            // 409 for the unique AppUsers.EmployeeId index. Same "don't let the UI offer what the
+            // API will reject" precedent as EquipmentQuery.ExcludeStatusId.
+            if (unlinkedOnly == true)
+            {
+                var linkedEmployeeIds = _db.AppUsers.AsNoTracking().Where(u => u.EmployeeId != null).Select(u => u.EmployeeId!.Value);
+                employees = employees.Where(e => !linkedEmployeeIds.Contains(e.Id));
+            }
 
-            return employees.Where(e => employeeIdsWithRole.Contains(e.Id));
+            return employees;
         }
 
         IQueryable<LookupDto>? query = name.ToLowerInvariant() switch

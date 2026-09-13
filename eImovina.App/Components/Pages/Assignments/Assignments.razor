@@ -53,29 +53,37 @@
     <HeaderContent>
         <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="equipment">Oprema</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="employee">Zaposlenik</MudTableSortLabel></MudTh>
-        <MudTh>Status</MudTh>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="assignedat">Datum zaduženja</MudTableSortLabel></MudTh>
-        <MudTh>Datum povrata</MudTh>
-        <MudTh>Zadužio</MudTh>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="returnedat">Datum povrata</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="AssignmentDto" SortLabel="assignedby">Zadužio</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Oprema">@context.InventoryNumber — @context.EquipmentName</MudTd>
         <MudTd DataLabel="Zaposlenik">@context.EmployeeName</MudTd>
-        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.AssignmentStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
         <MudTd DataLabel="Datum zaduženja">@context.AssignedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
         <MudTd DataLabel="Datum povrata">@(context.ReturnedAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
         <MudTd DataLabel="Zadužio">@context.AssignedByName</MudTd>
         <MudTd DataLabel="Akcije">
             @if (context.AssignmentStatusId == 1)
             {
-                <MudIconButton Icon="@Icons.Material.Filled.AssignmentReturn" Size="Size.Small" OnClick="@(() => ReturnAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Vrati {context.EquipmentName}" })" />
-                <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" OnClick="@(() => OpenTransferDialogAsync(context))"
-                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Premjesti {context.EquipmentName}" })" />
+                <MudTooltip Text="Vrati">
+                    <MudIconButton Icon="@Icons.Material.Filled.AssignmentReturn" Size="Size.Small" OnClick="@(() => ReturnAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Vrati {context.EquipmentName}" })" />
+                </MudTooltip>
+                <MudTooltip Text="Premjesti">
+                    <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" OnClick="@(() => OpenTransferDialogAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Premjesti {context.EquipmentName}" })" />
+                </MudTooltip>
             }
-            <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" OnClick="@(() => OpenChangeLocationDialogAsync(context))"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Promijeni lokaciju {context.EquipmentName}" })" />
+            <MudTooltip Text="Promijeni lokaciju">
+                <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" OnClick="@(() => OpenChangeLocationDialogAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Promijeni lokaciju {context.EquipmentName}" })" />
+            </MudTooltip>
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
@@ -187,6 +195,16 @@
         _statusId = null;
         await _table.ReloadServerData();
     }
+
+    // AssignmentStatuses fixed seeded ids: 1 Aktivno, 2 Vraćeno, 3 Premješteno, 4 Stornirano
+    // (reserved/unused).
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        1 => Color.Info,
+        2 => Color.Success,
+        3 => Color.Info,
+        _ => Color.Default,
+    };
 
     private static readonly DialogOptions AssignmentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 

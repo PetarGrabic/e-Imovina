@@ -39,21 +39,25 @@
     </ToolBarContent>
     <HeaderContent>
         <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="equipment">Oprema</MudTableSortLabel></MudTh>
-        <MudTh>Razlog</MudTh>
+        <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="reason">Razlog</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
-        <MudTh>Podnositelj</MudTh>
-        <MudTh>Poslano</MudTh>
+        <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="submittedby">Podnositelj</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="WriteOffRequestListDto" SortLabel="createdat">Poslano</MudTableSortLabel></MudTh>
         <MudTh>Akcije</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Oprema">@context.EquipmentInventoryNumber — @context.EquipmentName</MudTd>
         <MudTd DataLabel="Razlog">@context.Reason</MudTd>
-        <MudTd DataLabel="Status">@context.StatusName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.WriteOffRequestStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
         <MudTd DataLabel="Podnositelj">@context.SubmittedByName</MudTd>
         <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
         <MudTd DataLabel="Akcije">
-            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
-                           UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva za otpis {context.EquipmentInventoryNumber}" })" />
+            <MudTooltip Text="Detalji">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => OpenDetailAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Detalji zahtjeva za otpis {context.EquipmentInventoryNumber}" })" />
+            </MudTooltip>
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
@@ -135,6 +139,17 @@
         _statusId = null;
         await _table.ReloadServerData();
     }
+
+    // WriteOffRequestStatuses fixed seeded ids: 1 Zaprimljeno, 2 U obradi, 3 Odobreno, 4 Odbijeno,
+    // 5 Provedeno.
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        2 => Color.Warning,
+        3 => Color.Success,
+        4 => Color.Error,
+        5 => Color.Default,
+        _ => Color.Info,
+    };
 
     private static readonly DialogOptions WriteOffDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 

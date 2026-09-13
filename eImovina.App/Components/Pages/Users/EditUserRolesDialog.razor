@@ -1,0 +1,79 @@
+@using eImovina.Shared.Users
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-3">Korisnik: <b>@UserName</b></MudText>
+        <MudSelect T="int" Label="Uloge" MultiSelection="true" @bind-Value="_roleSelectValue" @bind-SelectedValues="_selectedRoleIds"
+                   MultiSelectionTextFunc="@GetRoleSelectionText" Variant="Variant.Outlined">
+            @foreach (var role in _roles)
+            {
+                <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
+            }
+        </MudSelect>
+        @if (_errorMessage is not null)
+        {
+            <ErrorAlert Message="@_errorMessage" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public int UserId { get; set; }
+    [Parameter] public string UserName { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<string> CurrentRoleNames { get; set; } = Array.Empty<string>();
+
+    private List<LookupDto> _roles = new();
+    private IReadOnlyCollection<int> _selectedRoleIds = new HashSet<int>();
+    private int _roleSelectValue;
+    private string? _errorMessage;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/roles");
+        if (result.IsSuccess)
+        {
+            _roles = result.Value!;
+            _selectedRoleIds = _roles.Where(r => CurrentRoleNames.Contains(r.Name)).Select(r => r.Id).ToHashSet();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_selectedRoleIds.Count == 0)
+        {
+            _errorMessage = "Potrebno je odabrati barem jednu ulogu.";
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+
+        var result = await Api.PutAsync<UpdateUserRolesDto, UserDetailDto>(
+            $"api/users/{UserId}/roles",
+            new UpdateUserRolesDto(_selectedRoleIds.ToList()));
+
+        _saving = false;
+
+        if (result.IsSuccess)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            _errorMessage = result.Error!.Message;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string GetRoleSelectionText(IReadOnlyList<string> selectedIds) =>
+        string.Join(", ", _roles.Where(r => selectedIds.Contains(r.Id.ToString())).Select(r => r.Name));
+}

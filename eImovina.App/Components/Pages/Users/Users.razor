@@ -1,0 +1,300 @@
+@page "/users"
+@attribute [Authorize(Policy = "AdminOnly")]
+@using Microsoft.AspNetCore.WebUtilities
+@using eImovina.Shared.Users
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Korisnici — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Korisnici</MudText>
+
+@if (_loadError is not null)
+{
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
+}
+
+<MudTable T="UserListDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 260px;" />
+        <MudSelect T="int?" Label="Uloga" Value="_roleId" ValueChanged="OnRoleFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 200px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Sve uloge</MudSelectItem>
+            @foreach (var role in _roles)
+            {
+                <MudSelectItem T="int?" Value="@((int?)role.Id)">@role.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="bool?" Label="Status" Value="_isActive" ValueChanged="OnActiveFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="bool?" Value="@((bool?)null)">Sve</MudSelectItem>
+            <MudSelectItem T="bool?" Value="@((bool?)true)">Aktivni</MudSelectItem>
+            <MudSelectItem T="bool?" Value="@((bool?)false)">Neaktivni</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+            Novi korisnik
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="username">Korisničko ime</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="email">E-mail</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="roles">Uloge</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="employee">Zaposlenik</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="location">Lokacija</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="isactive">Status</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="UserListDto" SortLabel="lastlogin">Zadnja prijava</MudTableSortLabel></MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Korisničko ime">@context.UserName</MudTd>
+        <MudTd DataLabel="E-mail">@context.Email</MudTd>
+        <MudTd DataLabel="Uloge">
+            @foreach (var role in context.Roles)
+            {
+                <MudChip T="string" Size="Size.Small" Class="mr-1">@role</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Zaposlenik">@(context.EmployeeName ?? "—")</MudTd>
+        <MudTd DataLabel="Lokacija">@(context.EmployeeLocationName ?? "—")</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                @(context.IsActive ? "Aktivan" : "Neaktivan")
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Zadnja prijava">@(context.LastLoginAtUtc?.ToLocalTime().ToString("dd.MM.yyyy. HH:mm") ?? "—")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <MudTooltip Text="Uredi uloge">
+                <MudIconButton Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Small" OnClick="@(() => OpenRolesDialogAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi uloge korisnika {context.UserName}" })" />
+            </MudTooltip>
+            <MudTooltip Text="Poveži zaposlenika">
+                <MudIconButton Icon="@Icons.Material.Filled.Badge" Size="Size.Small" OnClick="@(() => OpenLinkEmployeeDialogAsync(context))"
+                               UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Poveži zaposlenika za korisnika {context.UserName}" })" />
+            </MudTooltip>
+            @if (context.EmployeeId is int employeeId)
+            {
+                <MudTooltip Text="Uredi zaposlenika">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditEmployeeDialogAsync(employeeId))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi zaposlenika {context.EmployeeName}" })" />
+                </MudTooltip>
+            }
+            @if (context.IsActive)
+            {
+                <MudTooltip Text="Deaktiviraj">
+                    <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeactivateAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Deaktiviraj {context.UserName}" })" />
+                </MudTooltip>
+            }
+            else
+            {
+                <MudTooltip Text="Aktiviraj">
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" OnClick="@(() => ActivateAsync(context))"
+                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Aktiviraj {context.UserName}" })" />
+                </MudTooltip>
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Nema korisnika za prikaz." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje korisnika…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private static readonly DialogOptions DialogOpts = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private MudTable<UserListDto> _table = null!;
+    private List<LookupDto> _roles = new();
+    private string? _searchText;
+    private int? _roleId;
+    private bool? _isActive;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/roles");
+        if (result.IsSuccess)
+        {
+            _roles = result.Value!;
+        }
+    }
+
+    private async Task<TableData<UserListDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+        if (_roleId is int roleId)
+        {
+            queryParams["RoleId"] = roleId.ToString();
+        }
+        if (_isActive is bool isActive)
+        {
+            queryParams["IsActive"] = isActive.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/users", queryParams);
+        var result = await Api.GetAsync<PagedResult<UserListDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<UserListDto> { TotalItems = 0, Items = Array.Empty<UserListDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<UserListDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private Task OnRoleFilterChangedAsync(int? value)
+    {
+        _roleId = value;
+        return _table.ReloadServerData();
+    }
+
+    private Task OnActiveFilterChangedAsync(bool? value)
+    {
+        _isActive = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        _roleId = null;
+        _isActive = null;
+        await _table.ReloadServerData();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialogReference = await DialogService.ShowAsync<CreateUserDialog>("Novi korisnik", DialogOpts);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenRolesDialogAsync(UserListDto row)
+    {
+        var parameters = new DialogParameters<EditUserRolesDialog>
+        {
+            { x => x.UserId, row.Id },
+            { x => x.UserName, row.UserName },
+            { x => x.CurrentRoleNames, row.Roles },
+        };
+        var dialogReference = await DialogService.ShowAsync<EditUserRolesDialog>("Uredi uloge", parameters, DialogOpts);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenLinkEmployeeDialogAsync(UserListDto row)
+    {
+        var parameters = new DialogParameters<LinkEmployeeDialog>
+        {
+            { x => x.UserId, row.Id },
+            { x => x.UserName, row.UserName },
+            { x => x.CurrentEmployeeId, row.EmployeeId },
+            { x => x.CurrentEmployeeName, row.EmployeeName },
+        };
+        var dialogReference = await DialogService.ShowAsync<LinkEmployeeDialog>("Poveži zaposlenika", parameters, DialogOpts);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenEditEmployeeDialogAsync(int employeeId)
+    {
+        var parameters = new DialogParameters<EditEmployeeDialog> { { x => x.EmployeeId, employeeId } };
+        var dialogReference = await DialogService.ShowAsync<EditEmployeeDialog>("Uredi zaposlenika", parameters, DialogOpts);
+        var result = await dialogReference.Result;
+        if (result is { Canceled: false })
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task DeactivateAsync(UserListDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Deaktivirati korisnika?",
+            $"Korisnik „{row.UserName}” neće se moći prijaviti, a njegov trenutačni pristup API-ju bit će odmah onemogućen.",
+            "Deaktiviraj",
+            Color.Error);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/users/{row.Id}/deactivate");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Korisnik je deaktiviran.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+
+    private async Task ActivateAsync(UserListDto row)
+    {
+        var confirmed = await DialogService.ConfirmAsync(
+            "Aktivirati korisnika?",
+            $"Korisnik „{row.UserName}” ponovno će se moći prijaviti.",
+            "Aktiviraj",
+            Color.Success);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.PostAsync($"api/users/{row.Id}/activate");
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Korisnik je aktiviran.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(result.Error!.Message, Severity.Error);
+        }
+    }
+}

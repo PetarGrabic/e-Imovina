@@ -11,12 +11,9 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.ToTable("Employees");
         builder.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.LastName).HasMaxLength(100).IsRequired();
-        builder.Property(x => x.Email).HasMaxLength(200).IsRequired();
-        builder.Property(x => x.JobTitle).HasMaxLength(150);
         builder.Property(x => x.IsActive).HasDefaultValue(true);
         builder.Property(x => x.CreatedAtUtc).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-        builder.HasIndex(x => x.Email).IsUnique();
         builder.HasIndex(x => x.LocationId);
 
         builder.HasOne<Location>()

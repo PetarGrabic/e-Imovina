@@ -102,8 +102,11 @@ public class InventoriesController : ControllerBase
         filtered = query.Sort?.ToLowerInvariant() switch
         {
             "location" => descending ? filtered.OrderByDescending(x => x.LocationName) : filtered.OrderBy(x => x.LocationName),
+            "responsible" => descending ? filtered.OrderByDescending(x => x.ResponsibleName) : filtered.OrderBy(x => x.ResponsibleName),
             "status" => descending ? filtered.OrderByDescending(x => x.Inventory.InventoryStatusId) : filtered.OrderBy(x => x.Inventory.InventoryStatusId),
             "opened" => descending ? filtered.OrderByDescending(x => x.Inventory.OpenedAtUtc) : filtered.OrderBy(x => x.Inventory.OpenedAtUtc),
+            "completed" => descending ? filtered.OrderByDescending(x => x.Inventory.CompletedAtUtc) : filtered.OrderBy(x => x.Inventory.CompletedAtUtc),
+            "locked" => descending ? filtered.OrderByDescending(x => x.Inventory.LockedAtUtc) : filtered.OrderBy(x => x.Inventory.LockedAtUtc),
             // No explicit sort requested: most-recent-first is the natural default, regardless of
             // Dir - mirrors AssignmentsController.GetAssignments' default branch.
             _ => filtered.OrderByDescending(x => x.Inventory.CreatedAtUtc),
@@ -225,7 +228,12 @@ public class InventoriesController : ControllerBase
         filtered = query.Sort?.ToLowerInvariant() switch
         {
             "equipment" => descending ? filtered.OrderByDescending(x => x.Item.SnapshotEquipmentName) : filtered.OrderBy(x => x.Item.SnapshotEquipmentName),
+            "category" => descending ? filtered.OrderByDescending(x => x.Item.SnapshotCategoryName) : filtered.OrderBy(x => x.Item.SnapshotCategoryName),
+            "status" => descending ? filtered.OrderByDescending(x => x.Item.SnapshotStatusName) : filtered.OrderBy(x => x.Item.SnapshotStatusName),
             "foundlocation" => descending ? filtered.OrderByDescending(x => x.FoundLocationName) : filtered.OrderBy(x => x.FoundLocationName),
+            "isfound" => descending ? filtered.OrderByDescending(x => x.Item.IsFound) : filtered.OrderBy(x => x.Item.IsFound),
+            "isdamaged" => descending ? filtered.OrderByDescending(x => x.Item.IsDamaged) : filtered.OrderBy(x => x.Item.IsDamaged),
+            "note" => descending ? filtered.OrderByDescending(x => x.Item.Note) : filtered.OrderBy(x => x.Item.Note),
             _ => descending ? filtered.OrderByDescending(x => x.Item.SnapshotInventoryNumber) : filtered.OrderBy(x => x.Item.SnapshotInventoryNumber),
         };
 

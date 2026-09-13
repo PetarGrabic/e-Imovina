@@ -70,7 +70,10 @@ public class AssignmentsController : ControllerBase
         {
             "equipment" => descending ? filtered.OrderByDescending(x => x.Equipment.InventoryNumber) : filtered.OrderBy(x => x.Equipment.InventoryNumber),
             "employee" => descending ? filtered.OrderByDescending(x => x.Employee.LastName) : filtered.OrderBy(x => x.Employee.LastName),
+            "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
             "assignedat" => descending ? filtered.OrderByDescending(x => x.Assignment.AssignedAtUtc) : filtered.OrderBy(x => x.Assignment.AssignedAtUtc),
+            "returnedat" => descending ? filtered.OrderByDescending(x => x.Assignment.ReturnedAtUtc) : filtered.OrderBy(x => x.Assignment.ReturnedAtUtc),
+            "assignedby" => descending ? filtered.OrderByDescending(x => x.AssignedByName) : filtered.OrderBy(x => x.AssignedByName),
             // No explicit sort requested: most-recent-first is the natural default for a history
             // feed, regardless of Dir (which the frontend didn't set for this case either).
             _ => filtered.OrderByDescending(x => x.Assignment.AssignedAtUtc),
@@ -130,24 +133,53 @@ public class AssignmentsController : ControllerBase
     // authenticated role), same broadening rationale as Section 9's file-read endpoints.
     [HttpGet("mine")]
     [Authorize]
-    public async Task<ActionResult<List<MyAssignmentDto>>> GetMine(CancellationToken ct)
+    public async Task<ActionResult<PagedResult<MyAssignmentDto>>> GetMine([FromQuery] MyAssignmentQuery query, CancellationToken ct)
     {
+        var page = Math.Max(query.Page, 1);
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+
         var employeeId = _currentUser.EmployeeId;
         if (employeeId is null)
         {
-            return Ok(new List<MyAssignmentDto>());
+            return Ok(new PagedResult<MyAssignmentDto>(Array.Empty<MyAssignmentDto>(), 0, page, pageSize));
         }
 
-        var items = await (
+        var filtered =
             from a in _db.EquipmentAssignments.AsNoTracking()
             join e in _db.Equipment.AsNoTracking() on a.EquipmentId equals e.Id
             join s in _db.AssignmentStatuses.AsNoTracking() on a.AssignmentStatusId equals s.Id
             where a.EmployeeId == employeeId && a.AssignmentStatusId == 1
-            orderby a.AssignedAtUtc descending
-            select new MyAssignmentDto(a.Id, e.Id, e.InventoryNumber, e.Name, s.Name, a.AssignedAtUtc, a.Note)
-        ).ToListAsync(ct);
+            select new { Assignment = a, Equipment = e, StatusName = s.Name };
 
-        return Ok(items);
+        if (!string.IsNullOrWhiteSpace(query.Text))
+        {
+            var text = query.Text.Trim();
+            filtered = filtered.Where(x =>
+                EF.Functions.Like(x.Equipment.Name, $"%{text}%") ||
+                EF.Functions.Like(x.Equipment.InventoryNumber, $"%{text}%"));
+        }
+
+        var descending = query.Dir == SortDirection.Descending;
+        filtered = query.Sort?.ToLowerInvariant() switch
+        {
+            "inventorynumber" => descending ? filtered.OrderByDescending(x => x.Equipment.InventoryNumber) : filtered.OrderBy(x => x.Equipment.InventoryNumber),
+            "name" => descending ? filtered.OrderByDescending(x => x.Equipment.Name) : filtered.OrderBy(x => x.Equipment.Name),
+            "status" => descending ? filtered.OrderByDescending(x => x.StatusName) : filtered.OrderBy(x => x.StatusName),
+            "note" => descending ? filtered.OrderByDescending(x => x.Assignment.Note) : filtered.OrderBy(x => x.Assignment.Note),
+            // No explicit sort requested: most-recent-first is the natural default, regardless of
+            // Dir - same reasoning as EquipmentRequestsController.GetMine's default branch.
+            _ => filtered.OrderByDescending(x => x.Assignment.AssignedAtUtc),
+        };
+
+        var totalCount = await filtered.CountAsync(ct);
+
+        var items = await filtered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new MyAssignmentDto(x.Assignment.Id, x.Equipment.Id, x.Equipment.InventoryNumber, x.Equipment.Name, x.StatusName, x.Assignment.AssignedAtUtc, x.Assignment.Note))
+            .ToListAsync(ct);
+
+        return Ok(new PagedResult<MyAssignmentDto>(items, totalCount, page, pageSize));
     }
 
     // Assign requires EquipmentStatusId == 1 (Na skladištu), not just "not Otpisano" - this single

@@ -40,13 +40,13 @@ public static class DemoDataSeeder
         // one seeded location being referenced by an employee but not by any equipment.
         var employees = new List<Employee>
         {
-            new() { FirstName = "Ivan", LastName = "Horvat", Email = "ivan.horvat@e-imovina.hr", JobTitle = "Referent", LocationId = locations[0].Id },
-            new() { FirstName = "Ana", LastName = "Kovačić", Email = "ana.kovacic@e-imovina.hr", JobTitle = "Ravnateljica", LocationId = locations[1].Id },
-            new() { FirstName = "Marko", LastName = "Novak", Email = "marko.novak@e-imovina.hr", JobTitle = "Skladištar", LocationId = locations[2].Id },
-            new() { FirstName = "Petra", LastName = "Babić", Email = "petra.babic@e-imovina.hr", JobTitle = "Terenski koordinator", LocationId = locations[3].Id },
+            new() { FirstName = "Ivan", LastName = "Horvat", LocationId = locations[0].Id },
+            new() { FirstName = "Ana", LastName = "Kovačić", LocationId = locations[1].Id },
+            new() { FirstName = "Marko", LastName = "Novak", LocationId = locations[2].Id },
+            new() { FirstName = "Petra", LastName = "Babić", LocationId = locations[3].Id },
             // Plain Employee-only demo account (alongside Ivan) now that Petra also holds
             // LocationResponsible - keeps a distinct "no elevated role" ownership-denial example.
-            new() { FirstName = "Luka", LastName = "Perić", Email = "luka.peric@e-imovina.hr", JobTitle = "Administrativni referent", LocationId = locations[0].Id },
+            new() { FirstName = "Luka", LastName = "Perić", LocationId = locations[0].Id },
         };
         db.Employees.AddRange(employees);
         await db.SaveChangesAsync(ct);

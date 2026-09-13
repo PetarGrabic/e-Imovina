@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using eImovina.Api.Auth;
 using eImovina.Api.Data;
@@ -47,6 +48,58 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1),
+        };
+
+        // A JWT's baked-in role/employee claims would otherwise be trusted for the token's whole
+        // lifetime with no DB re-check, meaning Section 15's deactivate/role-change/employee-link
+        // actions would only take effect on the user's NEXT login. This re-fetches the caller's
+        // AppUser on every authenticated request instead (Section 15, user-requested fix) - a
+        // small extra DB round-trip per request, an acceptable tradeoff at this app's scale.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var userIdClaim = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (userIdClaim is null || !int.TryParse(userIdClaim, out var userId))
+                {
+                    context.Fail("Neispravan token.");
+                    return;
+                }
+
+                var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId);
+                if (user is null || !user.IsActive)
+                {
+                    context.Fail("Korisnički račun je deaktiviran.");
+                    return;
+                }
+
+                var roles = await (
+                    from ur in db.AppUserRoles
+                    join r in db.AppRoles on ur.AppRoleId equals r.Id
+                    where ur.AppUserId == userId
+                    select r.Name).ToListAsync();
+
+                var identity = (ClaimsIdentity)context.Principal!.Identity!;
+                foreach (var roleClaim in identity.FindAll(ClaimTypes.Role).ToList())
+                {
+                    identity.RemoveClaim(roleClaim);
+                }
+                foreach (var role in roles)
+                {
+                    identity.AddClaim(new Claim(ClaimTypes.Role, role));
+                }
+
+                var employeeClaim = identity.FindFirst(AuthClaimTypes.EmployeeId);
+                if (employeeClaim is not null)
+                {
+                    identity.RemoveClaim(employeeClaim);
+                }
+                if (user.EmployeeId is int employeeId)
+                {
+                    identity.AddClaim(new Claim(AuthClaimTypes.EmployeeId, employeeId.ToString()));
+                }
+            },
         };
     });
 

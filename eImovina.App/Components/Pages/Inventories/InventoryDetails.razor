@@ -103,19 +103,21 @@ else if (_inventory is not null)
         <HeaderContent>
             <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="inventorynumber">Inventurni broj</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="equipment">Naziv</MudTableSortLabel></MudTh>
-            <MudTh>Kategorija</MudTh>
-            <MudTh>Status</MudTh>
+            <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="foundlocation">Pronađena lokacija</MudTableSortLabel></MudTh>
-            <MudTh>Stanje</MudTh>
-            <MudTh>Oštećeno</MudTh>
-            <MudTh>Napomena</MudTh>
+            <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="isfound">Stanje</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="isdamaged">Oštećeno</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="InventoryItemDto" SortLabel="note">Napomena</MudTableSortLabel></MudTh>
             <MudTh>Akcije</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Inventurni broj">@context.SnapshotInventoryNumber</MudTd>
             <MudTd DataLabel="Naziv">@context.SnapshotEquipmentName</MudTd>
             <MudTd DataLabel="Kategorija">@context.SnapshotCategoryName</MudTd>
-            <MudTd DataLabel="Status">@context.SnapshotStatusName</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@GetEquipmentStatusColor(context.SnapshotStatusName)" Size="Size.Small">@context.SnapshotStatusName</MudChip>
+            </MudTd>
             <MudTd DataLabel="Pronađena lokacija">@(context.FoundLocationName ?? "—")</MudTd>
             <MudTd DataLabel="Stanje">
                 @if (context.IsFound is null)
@@ -145,8 +147,10 @@ else if (_inventory is not null)
             <MudTd DataLabel="Akcije">
                 @if (_inventory.InventoryStatusId != 5)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditItemDialogAsync(context))"
-                                   UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.SnapshotEquipmentName}" })" />
+                    <MudTooltip Text="Uredi">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditItemDialogAsync(context))"
+                                       UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = $"Uredi {context.SnapshotEquipmentName}" })" />
+                    </MudTooltip>
                 }
             </MudTd>
         </RowTemplate>
@@ -290,6 +294,19 @@ else if (_inventory is not null)
         _itemFoundLocationId = null;
         await _itemsTable.ReloadServerData();
     }
+
+    // SnapshotStatusName is a frozen TEXT snapshot by design (Section 2: an id-only snapshot would
+    // let a later equipment rename/recategorize retroactively change what a locked inventory
+    // displays) - so this switches on the literal seeded EquipmentStatuses name, not an id, unlike
+    // every other status-chip mapping in this app.
+    private static Color GetEquipmentStatusColor(string statusName) => statusName switch
+    {
+        "Na skladištu" => Color.Success,
+        "Zaduženo" => Color.Info,
+        "Na servisu" => Color.Warning,
+        "Nedostaje" => Color.Error,
+        _ => Color.Default,
+    };
 
     private static readonly DialogOptions InventoryDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 

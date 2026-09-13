@@ -1,75 +1,148 @@
 @page "/my-requests"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.WebUtilities
 @using eImovina.Shared.EquipmentRequests
+@using eImovina.Shared.Common
 @inject ApiClient Api
 @inject IDialogService DialogService
 
 <PageTitle>Moji zahtjevi — e-Imovina</PageTitle>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudText Typo="Typo.h5">Moji zahtjevi</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
-        Novi zahtjev
-    </MudButton>
-</MudStack>
+<MudText Typo="Typo.h5" GutterBottom="true">Moji zahtjevi</MudText>
 
-@if (_loading)
+@if (_loadError is not null)
 {
-    <LoadingPanel Message="Učitavanje zahtjeva…" />
+    <ErrorAlert Message="@_loadError" OnRetry="@(() => _table.ReloadServerData())" Class="mb-3" />
 }
-else if (_loadError is not null)
-{
-    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
-}
-else if (_items.Count == 0)
-{
-    <EmptyState Message="Trenutačno nemate poslanih zahtjeva." />
-}
-else
-{
-    <MudTable T="EquipmentRequestListDto" Items="_items" Hover="true" Dense="true">
-        <HeaderContent>
-            <MudTh>Kategorija</MudTh>
-            <MudTh>Opis</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh>Poslano</MudTh>
-            <MudTh>Odluka</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
-            <MudTd DataLabel="Opis">@context.Description</MudTd>
-            <MudTd DataLabel="Status">@context.StatusName</MudTd>
-            <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
-            <MudTd DataLabel="Odluka">@(context.DecisionAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+
+<MudTable T="EquipmentRequestListDto" @ref="_table" ServerData="ServerReloadAsync" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField T="string" Label="Pretraga" Immediate="true" DebounceInterval="400"
+                      @bind-Value="_searchText" OnDebounceIntervalElapsed="OnFilterChangedAsync"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      Class="mr-4" Style="max-width: 220px;" />
+        <MudSelect T="int?" Label="Status" Value="_statusId" ValueChanged="OnStatusFilterChangedAsync"
+                   Class="mr-4" Style="max-width: 180px;">
+            <MudSelectItem T="int?" Value="@((int?)null)">Svi statusi</MudSelectItem>
+            @foreach (var status in _statuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFiltersAsync">
+            Poništi filtere
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+            Novi zahtjev
+        </MudButton>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="category">Kategorija</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="description">Opis</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="status">Status</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="createdat">Poslano</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel T="EquipmentRequestListDto" SortLabel="decision">Odluka</MudTableSortLabel></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Kategorija">@context.CategoryName</MudTd>
+        <MudTd DataLabel="Opis">@context.Description</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@GetStatusColor(context.RequestStatusId)" Size="Size.Small">@context.StatusName</MudChip>
+        </MudTd>
+        <MudTd DataLabel="Poslano">@context.CreatedAtUtc.ToString("dd.MM.yyyy.")</MudTd>
+        <MudTd DataLabel="Odluka">@(context.DecisionAtUtc?.ToString("dd.MM.yyyy.") ?? "—")</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Message="Trenutačno nemate poslanih zahtjeva." />
+    </NoRecordsContent>
+    <LoadingContent>
+        <LoadingPanel Message="Učitavanje zahtjeva…" />
+    </LoadingContent>
+    <PagerContent>
+        <MudTablePager RowsPerPageString="Redaka po stranici:" AllItemsText="Sve" InfoFormat="{first_item}-{last_item} od {all_items}" />
+    </PagerContent>
+</MudTable>
 
 @code {
-    private List<EquipmentRequestListDto> _items = new();
-    private bool _loading = true;
+    private MudTable<EquipmentRequestListDto> _table = null!;
+    private List<LookupDto> _statuses = new();
+    private string? _searchText;
+    private int? _statusId;
     private string? _loadError;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
-
-    private async Task LoadAsync()
+    protected override async Task OnInitializedAsync()
     {
-        _loading = true;
-        _loadError = null;
-        StateHasChanged();
-
-        var result = await Api.GetAsync<List<EquipmentRequestListDto>>("api/equipmentrequests/mine");
-        _loading = false;
-
+        var result = await Api.GetAsync<List<LookupDto>>("api/lookups/requeststatuses");
         if (result.IsSuccess)
         {
-            _items = result.Value!;
-        }
-        else
-        {
-            _loadError = result.Error!.Message;
+            _statuses = result.Value!;
         }
     }
+
+    private async Task<TableData<EquipmentRequestListDto>> ServerReloadAsync(TableState state, CancellationToken ct)
+    {
+        var dir = state.SortDirection == MudBlazor.SortDirection.Descending
+            ? eImovina.Shared.Common.SortDirection.Descending
+            : eImovina.Shared.Common.SortDirection.Ascending;
+
+        var queryParams = new Dictionary<string, string?>
+        {
+            ["Page"] = (state.Page + 1).ToString(),
+            ["PageSize"] = state.PageSize.ToString(),
+            ["Dir"] = dir.ToString(),
+        };
+        if (!string.IsNullOrWhiteSpace(state.SortLabel))
+        {
+            queryParams["Sort"] = state.SortLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            queryParams["Text"] = _searchText;
+        }
+        if (_statusId is int statusId)
+        {
+            queryParams["RequestStatusId"] = statusId.ToString();
+        }
+
+        var url = QueryHelpers.AddQueryString("api/equipmentrequests/mine", queryParams);
+        var result = await Api.GetAsync<PagedResult<EquipmentRequestListDto>>(url, ct);
+
+        if (!result.IsSuccess)
+        {
+            _loadError = result.Error!.Message;
+            return new TableData<EquipmentRequestListDto> { TotalItems = 0, Items = Array.Empty<EquipmentRequestListDto>() };
+        }
+
+        _loadError = null;
+        return new TableData<EquipmentRequestListDto> { TotalItems = result.Value!.TotalCount, Items = result.Value.Items };
+    }
+
+    private Task OnFilterChangedAsync(string _) => _table.ReloadServerData();
+
+    private Task OnStatusFilterChangedAsync(int? value)
+    {
+        _statusId = value;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _searchText = null;
+        _statusId = null;
+        await _table.ReloadServerData();
+    }
+
+    // RequestStatuses fixed seeded ids: 1 Zaprimljeno, 2 U obradi, 3 Odobreno, 4 Odbijeno,
+    // 5 Realizirano, 6 Zatvoreno.
+    private static Color GetStatusColor(int statusId) => statusId switch
+    {
+        2 => Color.Warning,
+        3 or 5 => Color.Success,
+        4 => Color.Error,
+        6 => Color.Default,
+        _ => Color.Info,
+    };
 
     private static readonly DialogOptions CreateDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 
@@ -79,7 +152,7 @@ else
         var result = await dialogReference.Result;
         if (result is { Canceled: false })
         {
-            await LoadAsync();
+            await _table.ReloadServerData();
         }
     }
 }
