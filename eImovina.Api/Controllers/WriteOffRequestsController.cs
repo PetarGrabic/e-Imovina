@@ -214,6 +214,7 @@ public class WriteOffRequestsController : ControllerBase
             activeAssignment.ClosedByUserId = _currentUser.UserId;
         }
 
+        EquipmentHistoryRecorder.RecordStatusChange(_db, equipment.Id, equipment.EquipmentStatusId, 5, _currentUser.UserId, now);
         equipment.EquipmentStatusId = 5;
         writeOff.WriteOffRequestStatusId = 5;
         writeOff.ExecutedAtUtc = now;

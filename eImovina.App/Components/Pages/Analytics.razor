@@ -1,0 +1,134 @@
+@page "/analytics"
+@attribute [Authorize(Policy = "InventoryManagement")]
+@using eImovina.Shared.Analytics
+@using eImovina.Shared.Dashboard
+@inject ApiClient Api
+
+<PageTitle>Analitika — e-Imovina</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Analitika</MudText>
+
+@if (_loading)
+{
+    <LoadingPanel Message="Učitavanje analitike…" />
+}
+else if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="LoadAsync" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Odstupanja po lokaciji (zaključane inventure)</MudText>
+                @if (_discrepancies.Count == 0)
+                {
+                    <EmptyState Message="Nema zaključanih inventura s odstupanjima." />
+                }
+                else
+                {
+                    <MudChart ChartType="ChartType.Bar" ChartSeries="@_discrepancySeries" ChartLabels="@_discrepancyLabels" Width="100%" Height="300px" />
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Vrijednost opreme po kategoriji</MudText>
+                @if (_categoryValues.Count == 0)
+                {
+                    <EmptyState Message="Nema podataka o vrijednosti opreme." />
+                }
+                else
+                {
+                    <MudChart ChartType="ChartType.Donut" ChartSeries="@_categorySeries" ChartLabels="@_categoryLabels" Width="100%" Height="300px" />
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Vrijednost opreme po lokaciji</MudText>
+                @if (_valueByLocation.Count == 0)
+                {
+                    <EmptyState Message="Nema podataka o vrijednosti opreme." />
+                }
+                else
+                {
+                    <MudTable Items="@_valueByLocation" Hover="true" Dense="true">
+                        <HeaderContent>
+                            <MudTh>Lokacija</MudTh>
+                            <MudTh>Vrijednost</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                            <MudTd DataLabel="Vrijednost">@context.TotalValue.ToString("0.00")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+
+    private List<LocationDiscrepancyDto> _discrepancies = new();
+    private List<ChartSeries<double>> _discrepancySeries = new();
+    private string[] _discrepancyLabels = Array.Empty<string>();
+
+    private List<CategoryValueDto> _categoryValues = new();
+    private List<ChartSeries<double>> _categorySeries = new();
+    private string[] _categoryLabels = Array.Empty<string>();
+
+    private IReadOnlyList<LocationValueDto> _valueByLocation = Array.Empty<LocationValueDto>();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        var discrepanciesResult = await Api.GetAsync<List<LocationDiscrepancyDto>>("api/analytics/discrepancies-by-location");
+        var categoryResult = await Api.GetAsync<List<CategoryValueDto>>("api/analytics/value-by-category");
+        var dashboardResult = await Api.GetAsync<DashboardSummaryDto>("api/dashboard");
+
+        _loading = false;
+
+        if (!discrepanciesResult.IsSuccess)
+        {
+            _error = discrepanciesResult.Error!.Message;
+            return;
+        }
+        if (!categoryResult.IsSuccess)
+        {
+            _error = categoryResult.Error!.Message;
+            return;
+        }
+        if (!dashboardResult.IsSuccess)
+        {
+            _error = dashboardResult.Error!.Message;
+            return;
+        }
+
+        _discrepancies = discrepanciesResult.Value!;
+        _discrepancyLabels = _discrepancies.Select(x => x.LocationName).ToArray();
+        _discrepancySeries = new List<ChartSeries<double>>
+        {
+            new() { Name = "Nedostaje", Data = _discrepancies.Select(x => (double)x.MissingCount).ToArray() },
+            new() { Name = "Oštećeno", Data = _discrepancies.Select(x => (double)x.DamagedCount).ToArray() },
+            new() { Name = "Premješteno", Data = _discrepancies.Select(x => (double)x.RelocatedCount).ToArray() },
+        };
+
+        _categoryValues = categoryResult.Value!;
+        _categoryLabels = _categoryValues.Select(x => x.CategoryName).ToArray();
+        _categorySeries = new List<ChartSeries<double>>
+        {
+            new() { Name = "Vrijednost", Data = _categoryValues.Select(x => (double)x.TotalValue).ToArray() },
+        };
+
+        _valueByLocation = dashboardResult.Value!.ValueByLocation;
+    }
+}

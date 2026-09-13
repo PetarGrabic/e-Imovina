@@ -89,8 +89,9 @@ kod svih vezanih zaposlenika iznad).
   promjene) za `Admin`/`InventoryManager`, osobni brojači za ostale uloge.
 - **Lokacije** — `Locations`: CRUD nad lokacijama županije (`InventoryManagement`).
 - **Oprema** — `Equipment` (popis s pretragom/filterima/sortiranjem), `EquipmentCreate`,
-  `EquipmentEdit`, `EquipmentProfile` (detalji, povijest zaduženja, datoteke, zahtjevi za otpis) —
-  sve `InventoryManagement`.
+  `EquipmentEdit`, `EquipmentProfile` (detalji, povijest zaduženja, povijest lokacije/statusa,
+  vremenska crta, QR kod, datoteke, zahtjevi za otpis), `ScanEquipment` (pronalazak/unos opreme
+  skeniranjem QR koda ili ručnim unosom inventurnog broja) — sve `InventoryManagement`.
 - **Zaduženja** — `Assignments`: zaduživanje, povrat, prijenos drugom zaposleniku, promjena
   lokacije (`InventoryManagement`); `MyEquipment`: osobni prikaz trenutačno zadužene opreme (svaka
   uloga, `/mine`).
@@ -102,3 +103,13 @@ kod svih vezanih zaposlenika iznad).
   (`InventoryManagement`).
 - **Korisnici** — `Users`: upravljanje korisničkim računima, ulogama i vezom sa zaposlenikom
   (`AdminOnly`).
+- **Analitika** — `Analytics`: inventurna odstupanja po lokaciji (preko svih zaključanih
+  inventura) i vrijednost opreme po kategoriji/lokaciji (`InventoryManagement`).
+
+### Bonus dio
+
+Uz obavezni dio implementirana su i sva 4 bonus proširenja: detaljna povijest lokacije i statusa
+svakog komada opreme, analiza inventurnih odstupanja i vrijednosti opreme po lokacijama (stranica
+`Analytics`), vremenska crta opreme s dokumentima i promjenama (na `EquipmentProfile`), te
+unos/pronalazak opreme skeniranjem QR koda (`ScanEquipment`, s ručnim unosom kao alternativom
+kameri). Detalji u `docs/verification.md`.

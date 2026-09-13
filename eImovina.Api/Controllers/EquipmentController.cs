@@ -6,6 +6,7 @@ using eImovina.Shared.Equipment;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QRCoder;
 
 namespace eImovina.Api.Controllers;
 
@@ -137,6 +138,140 @@ public class EquipmentController : ControllerBase
         return dto is null ? NotFound() : Ok(dto);
     }
 
+    [HttpGet("{id:int}/location-history")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<ActionResult<List<EquipmentLocationHistoryDto>>> GetLocationHistory(int id, CancellationToken ct)
+    {
+        if (!await _db.Equipment.AnyAsync(e => e.Id == id, ct))
+        {
+            return NotFound();
+        }
+
+        var history = await (
+            from h in _db.EquipmentLocationHistories.AsNoTracking()
+            join to in _db.Locations.AsNoTracking() on h.ToLocationId equals to.Id
+            join fromLoc in _db.Locations.AsNoTracking() on h.FromLocationId equals fromLoc.Id into fromGroup
+            from fromLoc in fromGroup.DefaultIfEmpty()
+            join u in _db.AppUsers.AsNoTracking() on h.ChangedByUserId equals u.Id
+            where h.EquipmentId == id
+            orderby h.ChangedAtUtc descending
+            select new EquipmentLocationHistoryDto(
+                h.Id, h.EquipmentId, h.FromLocationId, fromLoc != null ? fromLoc.Name : null, h.ToLocationId, to.Name, h.ChangedAtUtc, u.UserName))
+            .ToListAsync(ct);
+
+        return Ok(history);
+    }
+
+    [HttpGet("{id:int}/status-history")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<ActionResult<List<EquipmentStatusHistoryDto>>> GetStatusHistory(int id, CancellationToken ct)
+    {
+        if (!await _db.Equipment.AnyAsync(e => e.Id == id, ct))
+        {
+            return NotFound();
+        }
+
+        var history = await (
+            from h in _db.EquipmentStatusHistories.AsNoTracking()
+            join to in _db.EquipmentStatuses.AsNoTracking() on h.ToStatusId equals to.Id
+            join fromStatus in _db.EquipmentStatuses.AsNoTracking() on h.FromStatusId equals fromStatus.Id into fromGroup
+            from fromStatus in fromGroup.DefaultIfEmpty()
+            join u in _db.AppUsers.AsNoTracking() on h.ChangedByUserId equals u.Id
+            where h.EquipmentId == id
+            orderby h.ChangedAtUtc descending
+            select new EquipmentStatusHistoryDto(
+                h.Id, h.EquipmentId, h.FromStatusId, fromStatus != null ? fromStatus.Name : null, h.ToStatusId, to.Name, h.ChangedAtUtc, u.UserName))
+            .ToListAsync(ct);
+
+        return Ok(history);
+    }
+
+    // Merges every source of equipment "history" already in the system (assignments,
+    // location/status history, write-offs, file uploads) into one chronological feed, scoped to
+    // this equipment - same "small targeted queries, merge + sort in memory" approach as
+    // DashboardController.GetRecentChangesAsync, just per-equipment and with no Take(5) cap.
+    [HttpGet("{id:int}/timeline")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<ActionResult<List<EquipmentTimelineEntryDto>>> GetTimeline(int id, CancellationToken ct)
+    {
+        if (!await _db.Equipment.AnyAsync(e => e.Id == id, ct))
+        {
+            return NotFound();
+        }
+
+        var entries = new List<EquipmentTimelineEntryDto>();
+
+        var assignments = await (
+            from a in _db.EquipmentAssignments.AsNoTracking()
+            join emp in _db.Employees.AsNoTracking() on a.EmployeeId equals emp.Id
+            where a.EquipmentId == id
+            select new { a.AssignmentStatusId, a.AssignedAtUtc, a.ReturnedAtUtc, EmployeeName = emp.FirstName + " " + emp.LastName })
+            .ToListAsync(ct);
+        foreach (var a in assignments)
+        {
+            entries.Add(new EquipmentTimelineEntryDto(a.AssignedAtUtc, "Assignment", $"Zaduženo korisniku {a.EmployeeName}", null));
+            if (a.ReturnedAtUtc is DateTime returnedAtUtc)
+            {
+                var description = a.AssignmentStatusId == 3 ? $"Premješteno od korisnika {a.EmployeeName}" : $"Vraćeno od korisnika {a.EmployeeName}";
+                entries.Add(new EquipmentTimelineEntryDto(returnedAtUtc, "Assignment", description, null));
+            }
+        }
+
+        var locationChanges = await (
+            from h in _db.EquipmentLocationHistories.AsNoTracking()
+            join to in _db.Locations.AsNoTracking() on h.ToLocationId equals to.Id
+            where h.EquipmentId == id
+            select new { h.ChangedAtUtc, ToLocationName = to.Name })
+            .ToListAsync(ct);
+        entries.AddRange(locationChanges.Select(h => new EquipmentTimelineEntryDto(h.ChangedAtUtc, "LocationChange", $"Lokacija promijenjena u {h.ToLocationName}", null)));
+
+        var statusChanges = await (
+            from h in _db.EquipmentStatusHistories.AsNoTracking()
+            join to in _db.EquipmentStatuses.AsNoTracking() on h.ToStatusId equals to.Id
+            where h.EquipmentId == id
+            select new { h.ChangedAtUtc, ToStatusName = to.Name })
+            .ToListAsync(ct);
+        entries.AddRange(statusChanges.Select(h => new EquipmentTimelineEntryDto(h.ChangedAtUtc, "StatusChange", $"Status promijenjen u „{h.ToStatusName}”", null)));
+
+        var writeOffs = await _db.WriteOffRequests.AsNoTracking().Where(w => w.EquipmentId == id).ToListAsync(ct);
+        foreach (var w in writeOffs)
+        {
+            entries.Add(new EquipmentTimelineEntryDto(w.CreatedAtUtc, "WriteOff", "Podnesen zahtjev za otpis", null));
+            if (w.DecisionAtUtc is DateTime decisionAtUtc)
+            {
+                var description = w.WriteOffRequestStatusId == 4 ? "Zahtjev za otpis odbijen" : "Zahtjev za otpis odobren";
+                entries.Add(new EquipmentTimelineEntryDto(decisionAtUtc, "WriteOff", description, null));
+            }
+            if (w.ExecutedAtUtc is DateTime executedAtUtc)
+            {
+                entries.Add(new EquipmentTimelineEntryDto(executedAtUtc, "WriteOff", "Otpis proveden", null));
+            }
+        }
+
+        var files = await _db.EquipmentFiles.AsNoTracking().Where(f => f.EquipmentId == id).ToListAsync(ct);
+        entries.AddRange(files.Select(f => new EquipmentTimelineEntryDto(f.UploadedAtUtc, "File", $"Dodana datoteka „{f.OriginalFileName}”", f.FileKind == EquipmentFileKind.Image ? f.Id : null)));
+
+        return Ok(entries.OrderByDescending(e => e.OccurredAtUtc).ToList());
+    }
+
+    // Encodes only the plain inventory number (not a URL) - confirmed with the user during
+    // planning, so a printed label keeps working no matter which host/port the app is deployed to
+    // later. The scan page (ScanEquipment.razor) looks the code back up via the existing text
+    // filter on GET /api/equipment.
+    [HttpGet("{id:int}/qrcode")]
+    [Authorize(Policy = "InventoryManagement")]
+    public async Task<IActionResult> GetQrCode(int id, CancellationToken ct)
+    {
+        var inventoryNumber = await _db.Equipment.Where(e => e.Id == id).Select(e => e.InventoryNumber).SingleOrDefaultAsync(ct);
+        if (inventoryNumber is null)
+        {
+            return NotFound();
+        }
+
+        var pngBytes = PngByteQRCodeHelper.GetQRCode(inventoryNumber, QRCodeGenerator.ECCLevel.Q, 20);
+        return File(pngBytes, "image/png");
+    }
+
     [HttpPost]
     [Authorize(Policy = "InventoryManagement")]
     public async Task<ActionResult<EquipmentDetailDto>> CreateEquipment([FromBody] EquipmentCreateDto request, CancellationToken ct)
@@ -181,6 +316,14 @@ public class EquipmentController : ControllerBase
         };
 
         _db.Equipment.Add(equipment);
+        await _db.SaveChangesAsync(ct);
+
+        // Seeds both history tables with an initial "from nothing" row, so every equipment item's
+        // location/status history is complete from the moment it was entered into the system, not
+        // just from the next change onward.
+        var createdAtUtc = DateTime.UtcNow;
+        EquipmentHistoryRecorder.RecordLocationChange(_db, equipment.Id, null, equipment.CurrentLocationId, _currentUser.UserId, createdAtUtc);
+        EquipmentHistoryRecorder.RecordStatusChange(_db, equipment.Id, null, equipment.EquipmentStatusId, _currentUser.UserId, createdAtUtc);
         await _db.SaveChangesAsync(ct);
 
         var categoryName = await _db.EquipmentCategories.Where(c => c.Id == equipment.EquipmentCategoryId).Select(c => c.Name).SingleAsync(ct);
@@ -267,6 +410,10 @@ public class EquipmentController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict);
         }
 
+        var now = DateTime.UtcNow;
+        EquipmentHistoryRecorder.RecordStatusChange(_db, equipment.Id, equipment.EquipmentStatusId, request.EquipmentStatusId, _currentUser.UserId, now);
+        EquipmentHistoryRecorder.RecordLocationChange(_db, equipment.Id, equipment.CurrentLocationId, request.CurrentLocationId, _currentUser.UserId, now);
+
         equipment.InventoryNumber = request.InventoryNumber;
         equipment.SerialNumber = request.SerialNumber;
         equipment.Name = request.Name;
@@ -304,6 +451,7 @@ public class EquipmentController : ControllerBase
             return Problem(detail: "Odabrana lokacija ne postoji.", statusCode: StatusCodes.Status400BadRequest);
         }
 
+        EquipmentHistoryRecorder.RecordLocationChange(_db, equipment.Id, equipment.CurrentLocationId, request.NewLocationId, _currentUser.UserId, DateTime.UtcNow);
         equipment.CurrentLocationId = request.NewLocationId;
         await _db.SaveChangesAsync(ct);
         return NoContent();

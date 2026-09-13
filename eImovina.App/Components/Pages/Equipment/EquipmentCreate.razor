@@ -6,4 +6,9 @@
 
 <MudText Typo="Typo.h5" GutterBottom="true">Nova oprema</MudText>
 
-<EquipmentForm OnSaved="@(id => Navigation.NavigateTo($"/equipment/{id}"))" />
+<EquipmentForm InitialInventoryNumber="@InventoryNumber" OnSaved="@(id => Navigation.NavigateTo($"/equipment/{id}"))" />
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? InventoryNumber { get; set; }
+}
