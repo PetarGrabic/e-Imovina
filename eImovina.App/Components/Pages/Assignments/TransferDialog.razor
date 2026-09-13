@@ -8,17 +8,24 @@
         {
             <MudText Typo="Typo.body2" Class="mb-3">Trenutno zadužio: @CurrentEmployeeName</MudText>
         }
-        <MudForm @ref="_form" Model="@_model">
-            <MudStack Spacing="3">
-                <MudSelect T="int" Label="Novi zaposlenik" @bind-Value="_model.NewEmployeeId" For="@(() => _model.NewEmployeeId)" Variant="Variant.Outlined">
-                    @foreach (var employee in _employees)
-                    {
-                        <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
-            </MudStack>
-        </MudForm>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    <MudSelect T="int" Label="Novi zaposlenik" @bind-Value="_model.NewEmployeeId" For="@(() => _model.NewEmployeeId)" Variant="Variant.Outlined">
+                        @foreach (var employee in _employees)
+                        {
+                            <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                </MudStack>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -39,6 +46,7 @@
     private MudForm _form = null!;
     private readonly TransferFormModel _model = new();
     private List<LookupDto> _employees = new();
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -49,6 +57,8 @@
         {
             _employees = result.Value!;
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()

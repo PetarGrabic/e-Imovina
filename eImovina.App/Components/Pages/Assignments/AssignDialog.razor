@@ -5,26 +5,33 @@
 
 <MudDialog>
     <DialogContent>
-        <MudForm @ref="_form" Model="@_model">
-            <MudStack Spacing="3">
-                @if (EquipmentId is null)
-                {
-                    <MudSelect T="int" Label="Oprema" @bind-Value="_model.EquipmentId" For="@(() => _model.EquipmentId)" Variant="Variant.Outlined">
-                        @foreach (var item in _equipmentOptions)
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    @if (EquipmentId is null)
+                    {
+                        <MudSelect T="int" Label="Oprema" @bind-Value="_model.EquipmentId" For="@(() => _model.EquipmentId)" Variant="Variant.Outlined">
+                            @foreach (var item in _equipmentOptions)
+                            {
+                                <MudSelectItem T="int" Value="@item.Id">@($"{item.InventoryNumber} — {item.Name}")</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    <MudSelect T="int" Label="Zaposlenik" @bind-Value="_model.EmployeeId" For="@(() => _model.EmployeeId)" Variant="Variant.Outlined">
+                        @foreach (var employee in _employees)
                         {
-                            <MudSelectItem T="int" Value="@item.Id">@($"{item.InventoryNumber} — {item.Name}")</MudSelectItem>
+                            <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
                         }
                     </MudSelect>
-                }
-                <MudSelect T="int" Label="Zaposlenik" @bind-Value="_model.EmployeeId" For="@(() => _model.EmployeeId)" Variant="Variant.Outlined">
-                    @foreach (var employee in _employees)
-                    {
-                        <MudSelectItem T="int" Value="@employee.Id">@employee.Name</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
-            </MudStack>
-        </MudForm>
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                </MudStack>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -45,6 +52,7 @@
     private readonly AssignFormModel _model = new();
     private List<LookupDto> _employees = new();
     private List<EquipmentListItemDto> _equipmentOptions = new();
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -75,6 +83,8 @@
         {
             _employees = employeesTask.Result.Value!;
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()

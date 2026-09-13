@@ -4,28 +4,35 @@
 
 <MudDialog>
     <DialogContent>
-        <MudForm @ref="_form" Model="@_model">
-            <MudStack Spacing="3">
-                <MudTextField T="string" Label="Korisničko ime" @bind-Value="_model.UserName" For="@(() => _model.UserName)" Immediate="true" Variant="Variant.Outlined" />
-                <MudTextField T="string" Label="E-mail" @bind-Value="_model.Email" For="@(() => _model.Email)" Immediate="true" Variant="Variant.Outlined" />
-                <MudTextField T="string" Label="Lozinka" @bind-Value="_model.Password" For="@(() => _model.Password)"
-                              Immediate="true" Variant="Variant.Outlined" InputType="InputType.Password" />
-                <MudSelect T="int" Label="Uloge" MultiSelection="true" @bind-Value="_roleSelectValue" @bind-SelectedValues="_selectedRoleIds"
-                           MultiSelectionTextFunc="@GetRoleSelectionText" Variant="Variant.Outlined">
-                    @foreach (var role in _roles)
-                    {
-                        <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudSelect T="int?" Label="Zaposlenik" @bind-Value="_model.EmployeeId" Variant="Variant.Outlined">
-                    <MudSelectItem T="int?" Value="@((int?)null)">Nepovezano</MudSelectItem>
-                    @foreach (var employee in _employees)
-                    {
-                        <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudStack>
-        </MudForm>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    <MudTextField T="string" Label="Korisničko ime" @bind-Value="_model.UserName" For="@(() => _model.UserName)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="E-mail" @bind-Value="_model.Email" For="@(() => _model.Email)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="Lozinka" @bind-Value="_model.Password" For="@(() => _model.Password)"
+                                  Immediate="true" Variant="Variant.Outlined" InputType="InputType.Password" />
+                    <MudSelect T="int" Label="Uloge" MultiSelection="true" @bind-Value="_roleSelectValue" @bind-SelectedValues="_selectedRoleIds"
+                               MultiSelectionTextFunc="@GetRoleSelectionText" Variant="Variant.Outlined">
+                        @foreach (var role in _roles)
+                        {
+                            <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="int?" Label="Zaposlenik" @bind-Value="_model.EmployeeId" Variant="Variant.Outlined">
+                        <MudSelectItem T="int?" Value="@((int?)null)">Nepovezano</MudSelectItem>
+                        @foreach (var employee in _employees)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)employee.Id)">@employee.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -46,6 +53,7 @@
     private List<LookupDto> _employees = new();
     private IReadOnlyCollection<int> _selectedRoleIds = new HashSet<int>();
     private int _roleSelectValue;
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -63,6 +71,8 @@
         {
             _employees = employeesTask.Result.Value!;
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()

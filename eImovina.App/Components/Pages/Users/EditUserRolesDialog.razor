@@ -4,13 +4,22 @@
 <MudDialog>
     <DialogContent>
         <MudText Class="mb-3">Korisnik: <b>@UserName</b></MudText>
-        <MudSelect T="int" Label="Uloge" MultiSelection="true" @bind-Value="_roleSelectValue" @bind-SelectedValues="_selectedRoleIds"
-                   MultiSelectionTextFunc="@GetRoleSelectionText" Variant="Variant.Outlined">
-            @foreach (var role in _roles)
-            {
-                <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
-            }
-        </MudSelect>
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form">
+                <MudSelect T="int" Label="Uloge" MultiSelection="true" @bind-Value="_roleSelectValue" @bind-SelectedValues="_selectedRoleIds"
+                           MultiSelectionTextFunc="@GetRoleSelectionText" Variant="Variant.Outlined">
+                    @foreach (var role in _roles)
+                    {
+                        <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -29,9 +38,11 @@
     [Parameter] public string UserName { get; set; } = string.Empty;
     [Parameter] public IReadOnlyList<string> CurrentRoleNames { get; set; } = Array.Empty<string>();
 
+    private MudForm _form = null!;
     private List<LookupDto> _roles = new();
     private IReadOnlyCollection<int> _selectedRoleIds = new HashSet<int>();
     private int _roleSelectValue;
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -43,10 +54,19 @@
             _roles = result.Value!;
             _selectedRoleIds = _roles.Where(r => CurrentRoleNames.Contains(r.Name)).Select(r => r.Id).ToHashSet();
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()
     {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        // Cross-field rule the MultiSelect can't express via DataAnnotations.
         if (_selectedRoleIds.Count == 0)
         {
             _errorMessage = "Potrebno je odabrati barem jednu ulogu.";

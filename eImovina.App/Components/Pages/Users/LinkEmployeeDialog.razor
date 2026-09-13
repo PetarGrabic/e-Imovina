@@ -9,7 +9,11 @@
         <MudText Class="mb-3">Korisnik: <b>@UserName</b></MudText>
         <MudSwitch T="bool" @bind-Value="_creatingNew" Label="Kreiraj novog zaposlenika" Color="Color.Primary" Class="mb-3" />
 
-        @if (!_creatingNew)
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else if (!_creatingNew)
         {
             <MudSelect T="int?" Label="Zaposlenik" @bind-Value="_employeeId" Variant="Variant.Outlined">
                 <MudSelectItem T="int?" Value="@((int?)null)">Nepovezano</MudSelectItem>
@@ -60,6 +64,7 @@
     private bool _creatingNew;
     private MudForm _newEmployeeForm = null!;
     private readonly NewEmployeeFormModel _newEmployeeModel = new();
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -87,6 +92,8 @@
         {
             _employees.Insert(0, new LookupDto(currentId, CurrentEmployeeName ?? $"#{currentId}"));
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()

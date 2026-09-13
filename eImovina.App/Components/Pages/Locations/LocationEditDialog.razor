@@ -4,23 +4,30 @@
 
 <MudDialog>
     <DialogContent>
-        <MudForm @ref="_form" Model="@_model">
-            <MudStack Spacing="3">
-                <MudTextField T="string" Label="Naziv" @bind-Value="_model.Name" For="@(() => _model.Name)" Immediate="true" Variant="Variant.Outlined" />
-                <MudTextField T="string" Label="Oznaka" @bind-Value="_model.Code" For="@(() => _model.Code)" Immediate="true" Variant="Variant.Outlined" />
-                <MudSelect T="int" Label="Tip lokacije" @bind-Value="_model.LocationTypeId" For="@(() => _model.LocationTypeId)" Variant="Variant.Outlined">
-                    @foreach (var type in _locationTypes)
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    <MudTextField T="string" Label="Naziv" @bind-Value="_model.Name" For="@(() => _model.Name)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="Oznaka" @bind-Value="_model.Code" For="@(() => _model.Code)" Immediate="true" Variant="Variant.Outlined" />
+                    <MudSelect T="int" Label="Tip lokacije" @bind-Value="_model.LocationTypeId" For="@(() => _model.LocationTypeId)" Variant="Variant.Outlined">
+                        @foreach (var type in _locationTypes)
+                        {
+                            <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string" Label="Adresa" @bind-Value="_model.Address" For="@(() => _model.Address)" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                    @if (IsEdit)
                     {
-                        <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                        <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivna" Color="Color.Primary" />
                     }
-                </MudSelect>
-                <MudTextField T="string" Label="Adresa" @bind-Value="_model.Address" For="@(() => _model.Address)" Immediate="true" Variant="Variant.Outlined" Lines="2" />
-                @if (IsEdit)
-                {
-                    <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivna" Color="Color.Primary" />
-                }
-            </MudStack>
-        </MudForm>
+                </MudStack>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -40,6 +47,7 @@
     private MudForm _form = null!;
     private readonly LocationFormModel _model = new();
     private List<LookupDto> _locationTypes = new();
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -61,6 +69,8 @@
         {
             _locationTypes = result.Value!;
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()

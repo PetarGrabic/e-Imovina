@@ -14,7 +14,7 @@
 }
 else if (_loadError is not null)
 {
-    <ErrorAlert Message="@_loadError" />
+    <ErrorAlert Message="@_loadError" OnRetry="LoadAsync" />
 }
 else
 {
@@ -28,8 +28,13 @@ else
     private string? _loadError;
     private EquipmentDetailDto? _equipment;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
+        _loading = true;
+        _loadError = null;
+
         var result = await Api.GetAsync<EquipmentDetailDto>($"api/equipment/{Id}");
         _loading = false;
 

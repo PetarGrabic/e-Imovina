@@ -10,9 +10,7 @@
 
         @if (Error == "1")
         {
-            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">
-                Neispravno korisničko ime ili lozinka.
-            </MudAlert>
+            <ErrorAlert Message="Neispravno korisničko ime ili lozinka." Class="mb-4" />
         }
 
         <form method="post" action="/account/login">

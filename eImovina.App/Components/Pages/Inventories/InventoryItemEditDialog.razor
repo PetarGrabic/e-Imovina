@@ -1,3 +1,4 @@
+@using System.ComponentModel.DataAnnotations
 @using eImovina.Shared.Inventories
 @using eImovina.Shared.Locations
 @inject ApiClient Api
@@ -5,23 +6,32 @@
 <MudDialog>
     <DialogContent>
         <MudText Typo="Typo.body2" Class="mb-3">@EquipmentLabel</MudText>
-        <MudStack Spacing="3">
-            <MudRadioGroup T="bool" @bind-Value="_isFound">
-                <MudRadio T="bool" Value="true" Color="Color.Success">Pronađeno</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Error">Nedostaje</MudRadio>
-            </MudRadioGroup>
-            @if (_isFound)
-            {
-                <MudSelect T="int?" Label="Lokacija pronalaska" @bind-Value="_foundLocationId" Variant="Variant.Outlined">
-                    @foreach (var location in _locations)
+        @if (_loading)
+        {
+            <LoadingPanel Message="Učitavanje…" />
+        }
+        else
+        {
+            <MudForm @ref="_form" Model="@_model">
+                <MudStack Spacing="3">
+                    <MudRadioGroup T="bool" @bind-Value="_isFound">
+                        <MudRadio T="bool" Value="true" Color="Color.Success">Pronađeno</MudRadio>
+                        <MudRadio T="bool" Value="false" Color="Color.Error">Nedostaje</MudRadio>
+                    </MudRadioGroup>
+                    @if (_isFound)
                     {
-                        <MudSelectItem T="int?" Value="@((int?)location.Id)">@location.Name</MudSelectItem>
+                        <MudSelect T="int?" Label="Lokacija pronalaska" @bind-Value="_foundLocationId" Variant="Variant.Outlined">
+                            @foreach (var location in _locations)
+                            {
+                                <MudSelectItem T="int?" Value="@((int?)location.Id)">@location.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudCheckBox T="bool" @bind-Value="_isDamaged" Label="Oštećeno" Color="Color.Warning" />
                     }
-                </MudSelect>
-                <MudCheckBox T="bool" @bind-Value="_isDamaged" Label="Oštećeno" Color="Color.Warning" />
-            }
-            <MudTextField T="string" Label="Napomena" @bind-Value="_note" Immediate="true" Variant="Variant.Outlined" Lines="2" />
-        </MudStack>
+                    <MudTextField T="string" Label="Napomena" @bind-Value="_model.Note" For="@(() => _model.Note)" Immediate="true" Variant="Variant.Outlined" Lines="2" />
+                </MudStack>
+            </MudForm>
+        }
         @if (_errorMessage is not null)
         {
             <ErrorAlert Message="@_errorMessage" Class="mt-3" />
@@ -44,11 +54,13 @@
     [Parameter] public bool? InitialIsDamaged { get; set; }
     [Parameter] public string? InitialNote { get; set; }
 
+    private MudForm _form = null!;
+    private readonly InventoryItemFormModel _model = new();
     private List<LocationListItemDto> _locations = new();
     private bool _isFound;
     private int? _foundLocationId;
     private bool _isDamaged;
-    private string? _note;
+    private bool _loading = true;
     private string? _errorMessage;
     private bool _saving;
 
@@ -59,17 +71,26 @@
         _isFound = InitialIsFound ?? true;
         _foundLocationId = InitialFoundLocationId;
         _isDamaged = InitialIsDamaged ?? false;
-        _note = InitialNote;
+        _model.Note = InitialNote;
 
         var result = await Api.GetAsync<PagedResult<LocationListItemDto>>("api/locations?PageSize=100");
         if (result.IsSuccess)
         {
             _locations = result.Value!.Items.ToList();
         }
+
+        _loading = false;
     }
 
     private async Task SubmitAsync()
     {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        // Cross-field rule DataAnnotations can't express: location is required only when found.
         if (_isFound && _foundLocationId is null)
         {
             _errorMessage = "Potrebno je odabrati lokaciju na kojoj je oprema pronađena.";
@@ -81,7 +102,7 @@
 
         var result = await Api.PutAsync<UpdateInventoryItemDto, InventoryItemDto>(
             $"api/inventories/{InventoryId}/items/{ItemId}",
-            new UpdateInventoryItemDto(_isFound, _isFound ? _foundLocationId : null, _isFound && _isDamaged, _note));
+            new UpdateInventoryItemDto(_isFound, _isFound ? _foundLocationId : null, _isFound && _isDamaged, _model.Note));
 
         _saving = false;
 
@@ -96,4 +117,10 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
+
+    private sealed class InventoryItemFormModel
+    {
+        [MaxLength(1000)]
+        public string? Note { get; set; }
+    }
 }
