@@ -255,7 +255,7 @@ Table WriteOffRequests {
 Table EquipmentFiles {
   Id integer [pk, increment]
   EquipmentId integer [not null]
-  FileKind EquipmentFileKind [not null]
+  FileKind EquipmentFileKind [not null, note: 'Stored as varchar(20) via a string value conversion (EF Core HasConversion<string>().HasMaxLength(20)), not a raw int.']
   OriginalFileName varchar(260) [not null]
   StoredFileName varchar(260) [not null, unique]
   RelativePath varchar(500) [not null]
@@ -284,10 +284,6 @@ Table AppUsers {
   EmployeeId integer [unique]
   CreatedAtUtc datetime [not null, default: `CURRENT_TIMESTAMP`]
   LastLoginAtUtc datetime
-
-  indexes {
-    EmployeeId
-  }
 
   Note: 'EmployeeId is nullable (Admin/InventoryManager accounts need no employee profile) and UNIQUE (at most one login account per employee), so a JWT UserId maps to exactly one EmployeeId for /mine ownership checks.'
 }
